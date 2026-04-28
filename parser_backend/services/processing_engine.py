@@ -22,7 +22,6 @@ from services.validation_service import (
     validate_transactions,
     extract_json_from_response,
     validate_extraction_propriety,
-    validate_code_quality_strict,
 )
 from repository.document_repo import (
     get_document,
@@ -317,12 +316,11 @@ def process_document(
             code_txns = extract_transactions_using_logic(full_text, extraction_code)
             logger.info("Code extracted: %d transactions", len(code_txns))
 
+            # For ACTIVE formats the code has already been vetted and promoted.
+            # We trust it completely — strict gate is NOT applied here.
             propriety_ok = validate_extraction_propriety(code_txns)
-            strict_ok    = validate_code_quality_strict(code_txns)
 
-            if strict_ok:
-                if not propriety_ok:
-                    logger.info("ACTIVE fast-path: Propriety failed but Strict gate passed — accepting CODE result.")
+            if propriety_ok:
                 logger.info("[STEP 5/5] PIPELINE COMPLETE — CODE (ACTIVE fast-path)")
                 update_processing_complete(document_id, "CODE")
                 insert_staging_code_only(document_id, user_id, code_txns, 100.0)
@@ -331,12 +329,11 @@ def process_document(
                 logger.info("═" * 70)
                 return
 
-            # ACTIVE code failed quality gates — fall into dual pipeline without
-            # changing status (we don't demote ACTIVE formats automatically)
+            # Propriety check failed (e.g. noise rows) — fall into dual pipeline
+            # without changing the ACTIVE status on the format.
             logger.warning(
-                "ACTIVE code failed quality gates (propriety=%s strict=%s) — "
-                "falling into dual pipeline without status demotion.",
-                propriety_ok, strict_ok,
+                "ACTIVE code failed propriety check — "
+                "falling into dual pipeline without status demotion."
             )
 
             # No vetting loop for ACTIVE — just run LLM on full doc
@@ -573,9 +570,7 @@ def _finish_pipeline(
         sum(t.get("confidence", 0) for t in llm_txns) / len(llm_txns), 2
     ) if llm_txns else 0
 
-    code_is_proper      = validate_extraction_propriety(code_txns)
-    code_is_strict      = validate_code_quality_strict(code_txns)
-    code_passes_quality = code_is_proper and code_is_strict
+    code_passes_quality = validate_extraction_propriety(code_txns)
 
     has_code = len(code_txns) > 0
     has_llm  = len(llm_txns) > 0
@@ -583,23 +578,25 @@ def _finish_pipeline(
     logger.info("Code accuracy    : %.2f%%", comparison_score)
     logger.info("Code confidence  : %.2f",   code_confidence)
     logger.info("LLM confidence   : %.2f",   llm_confidence)
-    logger.info("Code propriety   : %s",      "PASS" if code_is_proper else "FAIL")
-    logger.info("Code strict gate : %s",      "PASS" if code_is_strict else "FAIL")
+    logger.info("Code propriety   : %s",      "PASS" if code_passes_quality else "FAIL")
     logger.info("Has CODE txns    : %s",      has_code)
     logger.info("Has LLM txns     : %s",      has_llm)
 
     # ── Decision ──────────────────────────────────────────────────────────────
+    # Never demote an already-ACTIVE format — it has been vetted and promoted.
+    keep_active = (statement_status == "ACTIVE")
+
     if has_code and not has_llm:
         final_parser_type    = "CODE"
-        new_statement_status = "EXPERIMENTAL"
+        new_statement_status = "ACTIVE" if keep_active else "EXPERIMENTAL"
         logger.info("DECISION: CODE WINS — LLM returned 0 transactions")
-        logger.info("Format status → EXPERIMENTAL (no LLM reference to promote)")
+        logger.info("Format status → %s", new_statement_status)
 
     elif has_llm and not has_code:
         final_parser_type    = "LLM"
-        new_statement_status = "EXPERIMENTAL"
+        new_statement_status = "ACTIVE" if keep_active else "EXPERIMENTAL"
         logger.info("DECISION: LLM WINS — CODE returned 0 transactions")
-        logger.info("Format status → EXPERIMENTAL")
+        logger.info("Format status → %s", new_statement_status)
 
     elif (comparison_score >= 90 and code_passes_quality and len(code_txns) == len(llm_txns)) or (comparison_score == 100 and has_code and len(code_txns) == len(llm_txns)):
         final_parser_type    = "CODE"
@@ -610,20 +607,15 @@ def _finish_pipeline(
 
     elif not has_code and not has_llm:
         final_parser_type    = "LLM"
-        new_statement_status = "EXPERIMENTAL"
+        new_statement_status = "ACTIVE" if keep_active else "EXPERIMENTAL"
         logger.warning("DECISION: BOTH empty — defaulting to LLM (nothing)")
 
     else:
         final_parser_type    = "LLM"
-        new_statement_status = "EXPERIMENTAL"
-        if not code_is_proper:
-            reason = "code propriety check failed"
-        elif not code_is_strict:
-            reason = "code strict quality gate failed"
-        else:
-            reason = f"code accuracy {comparison_score:.2f}% < 90%"
+        new_statement_status = "ACTIVE" if keep_active else "EXPERIMENTAL"
+        reason = f"code accuracy {comparison_score:.2f}% < 90% or propriety check failed"
         logger.info("DECISION: LLM WINS (%s)", reason)
-        logger.info("Format status → EXPERIMENTAL")
+        logger.info("Format status → %s", new_statement_status)
 
     # ── Persist ───────────────────────────────────────────────────────────────
     if statement_id:

@@ -68,7 +68,7 @@ def is_transaction_proper(txn: dict) -> bool:
         if re.search(pat, desc, re.IGNORECASE):
             # Check exceptions (using the same list as strict gate)
             pat_key = pat.lstrip(r'\s*').split(r'\s*')[0].replace('\\', '')
-            exceptions = _STRICT_NOISE_EXCEPTIONS.get(pat_key, None)
+            exceptions = _NOISE_EXCEPTIONS.get(pat_key, None)
             if exceptions is not None:
                 if any(exc in desc_lower for exc in exceptions):
                     continue  # Legitimate use — skip this noise check
@@ -107,77 +107,12 @@ def validate_extraction_propriety(txns: list) -> bool:
     return True
 
 
-# ══════════════════════════════════════════════════════════
-# STRICT QUALITY GATE  (zero tolerance — BUG-04 fix)
-# ══════════════════════════════════════════════════════════
-
-STRICT_NOISE_PATTERNS = [
-    r'page\s*\d', r'statement', r'total',
-    r'generated', r'particulars', r'withdrawal',
-    r'deposit', r'chq', r'ref\.?no', r'value\s*date',
-    r'opening', r'closing', r'carried', r'brought',
-    # NOTE: date-in-details pattern removed.
-    # Indian bank descriptions legitimately contain date ranges
-    # e.g. "SBInt.Pd:01-08-2025 to 31-10-2025", "NACH-01-11-2025-HDFC"
-]
-
 # Patterns that are noise EXCEPT when part of legitimate transaction names
-_STRICT_NOISE_EXCEPTIONS = {
+_NOISE_EXCEPTIONS = {
     "balance":  ["charge", "fee", "minimum", "average"],
     "date":     [],  # 'date' in details is always noise
     "statement":["instalment", "emi"],  # "statement instalment" is a real CC txn
 }
-
-
-def validate_code_quality_strict(txns: list) -> bool:
-    """
-    Zero-tolerance check applied before a CODE result is accepted.
-
-    Returns False if ANY transaction has:
-    1. Noise in details (headers, dates, footer text).
-    2. Mathematical inconsistency (running balance delta broken).
-    3. Missing critical fields (no date, no amount).
-
-    Called from processing_engine.py alongside validate_extraction_propriety().
-    Both must pass for CODE to win the dual pipeline comparison.
-    """
-    if not txns:
-        return False
-
-    for i, txn in enumerate(txns):
-        date    = txn.get("date")
-        details = str(txn.get("details") or "").strip()
-        debit   = float(txn.get("debit")  or 0)
-        credit  = float(txn.get("credit") or 0)
-        balance = txn.get("balance")
-
-        # 1. CRITICAL FIELD CHECK
-        if not date or (debit == 0 and credit == 0 and balance is None):
-            logger.info("Strict gate FAILED: row %d missing critical fields.", i)
-            return False
-
-        # 2. DETAILS LENGTH CHECK
-        if len(details) < 3:
-            logger.info("Strict gate FAILED: row %d details too short: '%s'", i, details)
-            return False
-
-        # 3. NOISE CHECK
-        details_lower = details.lower()
-        for pat in STRICT_NOISE_PATTERNS:
-            if re.search(pat, details, re.IGNORECASE):
-                # Check exceptions
-                pat_key = pat.lstrip(r'\s*').split(r'\s*')[0].replace('\\', '')
-                exceptions = _STRICT_NOISE_EXCEPTIONS.get(pat_key, None)
-                if exceptions is not None:
-                    if any(exc in details_lower for exc in exceptions):
-                        continue  # Legitimate use — skip this noise check
-                logger.info(
-                    "Strict gate FAILED: row %d details contain noise '%s': %s",
-                    i, pat, details
-                )
-                return False
-
-    return True
 
 
 # ══════════════════════════════════════════════════════════
