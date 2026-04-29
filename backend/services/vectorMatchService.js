@@ -68,99 +68,33 @@ async function findVectorMatch(cleanString, userId, transactionType) {
     }
 
     // ------------------------------------------
-    // ⚡ STAGE 3.1.2: TRIPLE-THREAT (Exact & Fuzzy)
+    // 🔑 STAGE 3.1.1: GLOBAL KEYWORD RULES
     // ------------------------------------------
-    // Before vectors, check literal name existence (IRCTC) or typos (BREKFAST)
-    const { data: globalCache } = await supabase
-      .from('global_vector_cache')
-      .select('clean_name, target_template_id')
-      .eq('is_verified', true);
-
-    if (globalCache) {
-      let bestMatch = null;
-      for (const entry of globalCache) {
-        const cacheWord = entry.clean_name.toUpperCase();
-        
-        // A. LITERAL MATCH
-        // Only trigger if keyword is long (>= 10 chars) or is a standalone word
-        const isLiteralMatch = cacheWord.length >= 10 
-          ? uppercaseString.includes(cacheWord)
-          // Look for exact word, allowing optional trailing 'S' for plurals (e.g. EGG/EGGS)
-          : new RegExp(`\\b${cacheWord}S?\\b`, 'i').test(uppercaseString);
-
-        if (isLiteralMatch) {
-          bestMatch = { tid: entry.target_template_id, score: 1.0, type: 'G_KEY' };
-          break;
-        }
-
-        // B. FUZZY MATCH (The BREKFAST Fix)
-        const txnWords = uppercaseString.split(/[- ]/);
-        for (const w of txnWords) {
-          if (w.length <= 2) continue; // Allow 3-letter words like EGG or TEA
-          
-          let score = stringOverlapScore(w, cacheWord);
-          // Boost score if one completely starts with the other (e.g., EGGS / EGG, DOMINOS / DOMINO)
-          if (w.startsWith(cacheWord) || cacheWord.startsWith(w)) score += 0.15;
-
-          if (score > 0.85) {
-            bestMatch = { tid: entry.target_template_id, score: 0.90, type: 'G_VEC' };
-            break;
-          }
-        }
-        if (bestMatch) break;
-      }
-
-        if (bestMatch) {
-          // AUTO-DISCOVERY: Resolve template to account (Create if missing)
-          const offset_account_id = await resolveAccountFromTemplate(bestMatch.tid, userId);
-          
-          if (offset_account_id) {
-            console.info(`🎯 Triple-Threat Winner: ${bestMatch.type} on "${bestMatch.tid}" for "${uppercaseString.slice(0, 50)}"`);
-            return {
-              offset_account_id,
-              confidence_score: bestMatch.score,
-              categorised_by: bestMatch.type
-            };
-          }
-        }
-    }
-
-    // ------------------------------------------
-    // 🔑 STAGE 3.1.5: GLOBAL KEYWORD RULES
-    // ------------------------------------------
-    // High-confidence deterministic matching for obvious keywords (e.g. COFFEE, PETROL, PIZZA).
-    // Runs AFTER personal history so user overrides are always respected.
-    // Rules sorted by priority (highest first): e.g. "AMAZON MUSIC" > "AMAZON".
+    // Highest priority for global rules. This ensures specific keywords 
+    // (like GST or GOOGLEWORKSP) always win before fuzzy or cache matches.
     const { data: keywordRules, error: keywordError } = await supabase
       .from('global_keyword_rules')
       .select('keyword, match_type, target_template_id, priority')
       .eq('is_active', true)
       .order('priority', { ascending: false });
 
-    if (keywordError) {
-      console.error('❌ findVectorMatch (Keyword) query error:', keywordError);
-    } else if (keywordRules && keywordRules.length > 0) {
+    if (keywordRules && keywordRules.length > 0) {
+      console.debug(`🔍 G_KEY: Evaluating ${keywordRules.length} rules against "${uppercaseString}"`);
       for (const rule of keywordRules) {
         const keyword = rule.keyword.toUpperCase();
-        
-        // Smarter matching: 
-        // 1. If keyword is short (< 5 chars), ensure it's a standalone word to avoid "PHONE" in "FROMPHONE"
-        // 2. If EXACT match, verify equality
         let isMatch = false;
         if (rule.match_type === 'EXACT') {
           isMatch = (uppercaseString === keyword);
         } else {
-          // Fix: Always use word boundaries to avoid partial matches like "PHONE" in "FROMPHONE"
           const regex = new RegExp(`\\b${keyword}S?\\b`, 'i');
           isMatch = regex.test(uppercaseString);
         }
 
         if (!isMatch) continue;
 
-        console.debug(`🔑 Keyword rule matched: "${keyword}" (priority:${rule.priority}, template:${rule.target_template_id}) on "${uppercaseString.slice(0, 60)}"`);
+        console.debug(`🎯 G_KEY match found: "${keyword}" for "${uppercaseString}"`);
 
         const offset_account_id = await resolveAccountFromTemplate(rule.target_template_id, userId);
-
         if (offset_account_id) {
           console.info(`✅ G_KEY winner: "${keyword}" → template:${rule.target_template_id} → account:${offset_account_id}`);
           return {
@@ -169,9 +103,69 @@ async function findVectorMatch(cleanString, userId, transactionType) {
             categorised_by: 'G_KEY'
           };
         }
+      }
+    }
 
-        // Template match found but no active user account mapped to this template
-        console.debug(`⚠️ Keyword rule "${keyword}" (template:${rule.target_template_id}) found, but no active account mapped for this user.`);
+    // ------------------------------------------
+    // ⚡ STAGE 3.1.2: TRIPLE-THREAT (Literal Only)
+    // ------------------------------------------
+    // High-priority exact matches from the global cache.
+    const { data: globalCache } = await supabase
+      .from('global_vector_cache')
+      .select('clean_name, target_template_id')
+      .eq('is_verified', true);
+
+    if (globalCache) {
+      for (const entry of globalCache) {
+        const cacheWord = entry.clean_name.toUpperCase();
+        
+        // A. LITERAL MATCH
+        const isLiteralMatch = cacheWord.length >= 10 
+          ? uppercaseString.includes(cacheWord)
+          : new RegExp(`\\b${cacheWord}S?\\b`, 'i').test(uppercaseString);
+
+        if (isLiteralMatch) {
+          const offset_account_id = await resolveAccountFromTemplate(entry.target_template_id, userId);
+          if (offset_account_id) {
+            console.info(`🎯 Triple-Threat Winner: G_KEY on "${entry.target_template_id}" for "${uppercaseString.slice(0, 50)}"`);
+            return {
+              offset_account_id,
+              confidence_score: 1.0,
+              categorised_by: 'G_KEY'
+            };
+          }
+        }
+      }
+    }
+
+    // ------------------------------------------
+    // ⚡ STAGE 3.1.6: TRIPLE-THREAT (Fuzzy Fallback)
+    // ------------------------------------------
+    // Only runs if no exact or keyword match was found.
+    if (globalCache) {
+      for (const entry of globalCache) {
+        const cacheWord = entry.clean_name.toUpperCase();
+        if (cacheWord.length <= 3) continue; // Skip short words to avoid "TAX" -> "TAXI" errors
+
+        const txnWords = uppercaseString.split(/[- ]/);
+        for (const w of txnWords) {
+          if (w.length <= 3) continue; 
+          
+          let score = stringOverlapScore(w, cacheWord);
+          if (w.startsWith(cacheWord) || cacheWord.startsWith(w)) score += 0.15;
+
+          if (score > 0.85) {
+            const offset_account_id = await resolveAccountFromTemplate(entry.target_template_id, userId);
+            if (offset_account_id) {
+              console.info(`🎯 Triple-Threat Winner: G_VEC (Fuzzy) on "${entry.target_template_id}" for "${uppercaseString.slice(0, 50)}"`);
+              return {
+                offset_account_id,
+                confidence_score: 0.90,
+                categorised_by: 'G_VEC'
+              };
+            }
+          }
+        }
       }
     }
 
@@ -435,7 +429,7 @@ async function resolveAccountFromTemplate(templateId, userId) {
     // we return null rather than polluting the chart of accounts with "Category N".
     const fallbackNames = {
       14:  'Healthcare & Medical',
-      30:  'Education & Books',
+      30:  'Education',
       35:  'Housing & Rent',
       36:  'Food & Dining',
       37:  'Travel & Transport',
@@ -447,10 +441,18 @@ async function resolveAccountFromTemplate(templateId, userId) {
       45:  'Entertainment & Leisure',
       52:  'Gifts & Donations',
       97:  'Personal Care',
+      113: 'Advertising & Marketing',
       116: 'Subscriptions & Memberships',
       121: 'Bank Charges & Fees',
+      156: 'Professional Fees',
       213: 'Groceries',
       227: 'Travel & Transport',
+      262: 'Education Fees',
+      265: 'Books & Media',
+      295: 'Digital Wallets',
+      296: 'Healthcare & Pharmacy',
+      297: 'Hospitals & Clinics',
+      298: 'Health Insurance',
       303: 'Other Taxes & Levies',
       310: 'Fuel',
       325: 'Miscellaneous',
@@ -459,14 +461,20 @@ async function resolveAccountFromTemplate(templateId, userId) {
       549: 'Loan & EMI',
       550: 'Credit Card Payment',
       578: 'Stationery & Office Supplies',
+      580: 'Digital Services',
     };
 
     const accountName = (tData && tData.template_name)
       ? tData.template_name
       : fallbackNames[templateId];
 
+    if (tData && tData.template_name) {
+      console.debug(`📌 resolveAccountFromTemplate: Found name "${accountName}" in DB for template ${templateId}`);
+    } else if (fallbackNames[templateId]) {
+      console.debug(`📌 resolveAccountFromTemplate: Using fallback name "${accountName}" for template ${templateId}`);
+    }
+
     // If we cannot determine a proper name, refuse to create the account.
-    // The transaction will fall through to LLM for intelligent categorisation.
     if (!accountName) {
       console.debug(`⚠️ resolveAccountFromTemplate: No name found for template ${templateId} — refusing to create "Category ${templateId}". Will fall to LLM.`);
       return null;

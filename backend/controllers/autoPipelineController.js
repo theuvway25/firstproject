@@ -56,16 +56,50 @@ async function getAccountIdFromTemplate(templateId, userId) {
 
   const { data: tData } = await supabase.from('templates').select('template_name').eq('id', templateId).single();
   const fallbackNames = {
-    14: 'Healthcare & Medical', 30: 'Education & Books', 35: 'Housing & Rent', 36: 'Food & Dining',
-    37: 'Travel & Transport', 38: 'Shopping & Clothing', 39: 'Mobile & Utilities', 40: 'Mobile & Utilities',
-    41: 'Insurance', 43: 'Investment & Savings', 45: 'Entertainment & Leisure', 52: 'Gifts & Donations',
-    97: 'Personal Care', 116: 'Subscriptions & Memberships', 121: 'Bank Charges & Fees', 213: 'Groceries',
-    227: 'Travel & Transport', 303: 'Other Taxes & Levies', 310: 'Fuel', 325: 'Miscellaneous',
-    433: 'ATM & Cash Withdrawal', 541: 'Investment & Savings', 549: 'Loan & EMI', 550: 'Credit Card Payment',
-    578: 'Stationery & Office Supplies'
+    14:  'Healthcare & Medical',
+    30:  'Education',
+    35:  'Housing & Rent',
+    36:  'Food & Dining',
+    37:  'Travel & Transport',
+    38:  'Shopping & Clothing',
+    39:  'Mobile & Utilities',
+    40:  'Mobile & Utilities',
+    41:  'Insurance',
+    43:  'Investment & Savings',
+    45:  'Entertainment & Leisure',
+    52:  'Gifts & Donations',
+    97:  'Personal Care',
+    113: 'Advertising & Marketing',
+    116: 'Subscriptions & Memberships',
+    121: 'Bank Charges & Fees',
+    156: 'Professional Fees',
+    213: 'Groceries',
+    227: 'Travel & Transport',
+    262: 'Education Fees',
+    265: 'Books & Media',
+    295: 'Digital Wallets',
+    296: 'Healthcare & Pharmacy',
+    297: 'Hospitals & Clinics',
+    298: 'Health Insurance',
+    303: 'Other Taxes & Levies',
+    310: 'Fuel',
+    325: 'Miscellaneous',
+    433: 'ATM & Cash Withdrawal',
+    541: 'Investment & Savings',
+    549: 'Loan & EMI',
+    550: 'Credit Card Payment',
+    578: 'Stationery & Office Supplies',
+    580: 'Digital Wallets',
   };
 
   const accountName = (tData && tData.template_name) ? tData.template_name : fallbackNames[templateId];
+  
+  if (tData && tData.template_name) {
+    console.debug(`📌 getAccountIdFromTemplate: Found name "${accountName}" in DB for template ${templateId}`);
+  } else if (fallbackNames[templateId]) {
+    console.debug(`📌 getAccountIdFromTemplate: Using fallback name "${accountName}" for template ${templateId}`);
+  }
+
   if (!accountName) return null;
 
   const { data: newAcc, error: createError } = await supabase
