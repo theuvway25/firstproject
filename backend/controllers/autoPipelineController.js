@@ -171,7 +171,7 @@ async function runAutoPipeline(req, res) {
           try {
             const vectorMatch = await vectorMatchService.findVectorMatch(stringToMatch, user_id, transactionType);
             if (vectorMatch) {
-              const result = { offset_account_id: vectorMatch.offset_account_id, categorised_by: vectorMatch.categorised_by, confidence_score: vectorMatch.confidence_score, attention_level: (vectorMatch.confidence_score < 0.7) ? 'MEDIUM' : 'LOW' };
+              const result = { offset_account_id: vectorMatch.offset_account_id, categorised_by: vectorMatch.categorised_by, confidence_score: vectorMatch.confidence_score, attention_level: (vectorMatch.confidence_score < 0.55) ? 'MEDIUM' : 'LOW' };
               if (txn.group_id) groupResultMap.set(txn.group_id, result);
               resolvedRows.push({ txn, result });
               return;

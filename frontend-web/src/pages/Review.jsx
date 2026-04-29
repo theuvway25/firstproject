@@ -783,91 +783,89 @@ export default function ReviewPage() {
             )}
 
             {/* Quick Stats Summary Section */}
-            {!isApproved && (
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                    gap: '1.25rem',
-                    marginBottom: '2rem'
-                }}>
-                    {/* Card 1: Total */}
-                    <div className="stats-card">
-                        <div className="stats-icon" style={{ background: 'rgba(72, 62, 168, 0.1)', color: 'var(--primary-action)' }}>
-                            <ScrollText size={24} />
-                        </div>
-                        <div>
-                            <div className="stats-label">Total Transactions</div>
-                            <div className="stats-value">{(activeParser === "CODE" ? editableCodeTxns : editableLlmTxns).length}</div>
-                        </div>
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '1.25rem',
+                marginBottom: '2rem'
+            }}>
+                {/* Card 1: Total */}
+                <div className="stats-card">
+                    <div className="stats-icon" style={{ background: 'rgba(72, 62, 168, 0.1)', color: 'var(--primary-action)' }}>
+                        <ScrollText size={24} />
                     </div>
-
-                    {/* Card 2: Credits */}
-                    <div className="stats-card">
-                        <div className="stats-icon" style={{ background: '#def7ec', color: '#03543f' }}>
-                            <Plus size={24} />
-                        </div>
-                        <div>
-                            <div className="stats-label">Number of Credits (+)</div>
-                            <div className="stats-value" style={{ color: '#03543f' }}>
-                                {(activeParser === "CODE" ? editableCodeTxns : editableLlmTxns).filter(t => t.credit > 0).length}
-                            </div>
-                        </div>
+                    <div>
+                        <div className="stats-label">Total Transactions</div>
+                        <div className="stats-value">{(activeParser === "CODE" ? editableCodeTxns : editableLlmTxns).length}</div>
                     </div>
-
-                    {/* Card 3: Debits */}
-                    <div className="stats-card">
-                        <div className="stats-icon" style={{ background: '#fdf2f2', color: '#9b1c1c' }}>
-                            <Minus size={24} /> 
-                        </div>
-                        <div>
-                            <div className="stats-label">Number of Debits (-)</div>
-                            <div className="stats-value" style={{ color: '#9b1c1c' }}>
-                                {(activeParser === "CODE" ? editableCodeTxns : editableLlmTxns).filter(t => t.debit > 0).length}
-                            </div>
-                        </div>
-                    </div>
-
-                    <style dangerouslySetInnerHTML={{ __html: `
-                        .stats-card {
-                            background: white;
-                            border: 1px solid var(--border-color);
-                            border-radius: 16px;
-                            padding: 1.25rem 1.5rem;
-                            display: flex;
-                            align-items: center;
-                            gap: 1.25rem;
-                            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-                            transition: transform 0.2s, box-shadow 0.2s;
-                        }
-                        .stats-card:hover {
-                            transform: translateY(-2px);
-                            box-shadow: 0 8px 20px rgba(0,0,0,0.06);
-                        }
-                        .stats-icon {
-                            width: 56px;
-                            height: 56px;
-                            border-radius: 14px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            flex-shrink: 0;
-                        }
-                        .stats-label {
-                            font-size: 0.75rem;
-                            font-weight: 700;
-                            color: var(--text-secondary);
-                            text-transform: uppercase;
-                            letter-spacing: 0.5px;
-                            margin-bottom: 4px;
-                        }
-                        .stats-value {
-                            font-size: 1.5rem;
-                            font-weight: 800;
-                            color: var(--text-primary);
-                        }
-                    `}} />
                 </div>
-            )}
+
+                {/* Card 2: Credits */}
+                <div className="stats-card">
+                    <div className="stats-icon" style={{ background: '#def7ec', color: '#03543f' }}>
+                        <Plus size={24} />
+                    </div>
+                    <div>
+                        <div className="stats-label">Number of Credits (+)</div>
+                        <div className="stats-value" style={{ color: '#03543f' }}>
+                            {(activeParser === "CODE" ? editableCodeTxns : editableLlmTxns).filter(t => t.credit > 0).length}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Card 3: Debits */}
+                <div className="stats-card">
+                    <div className="stats-icon" style={{ background: '#fdf2f2', color: '#9b1c1c' }}>
+                        <Minus size={24} /> 
+                    </div>
+                    <div>
+                        <div className="stats-label">Number of Debits (-)</div>
+                        <div className="stats-value" style={{ color: '#9b1c1c' }}>
+                            {(activeParser === "CODE" ? editableCodeTxns : editableLlmTxns).filter(t => t.debit > 0).length}
+                        </div>
+                    </div>
+                </div>
+
+                <style dangerouslySetInnerHTML={{ __html: `
+                    .stats-card {
+                        background: white;
+                        border: 1px solid var(--border-color);
+                        border-radius: 16px;
+                        padding: 1.25rem 1.5rem;
+                        display: flex;
+                        align-items: center;
+                        gap: 1.25rem;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+                        transition: transform 0.2s, box-shadow 0.2s;
+                    }
+                    .stats-card:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+                    }
+                    .stats-icon {
+                        width: 56px;
+                        height: 56px;
+                        border-radius: 14px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        flex-shrink: 0;
+                    }
+                    .stats-label {
+                        font-size: 0.75rem;
+                        font-weight: 700;
+                        color: var(--text-secondary);
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-bottom: 4px;
+                    }
+                    .stats-value {
+                        font-size: 1.5rem;
+                        font-weight: 800;
+                        color: var(--text-primary);
+                    }
+                `}} />
+            </div>
 
             {/* Metadata bar */}
             <div style={{

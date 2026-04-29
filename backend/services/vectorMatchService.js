@@ -25,7 +25,7 @@ async function findVectorMatch(cleanString, userId, transactionType) {
     // Person names produce embeddings that match random categories at low threshold.
     const isMeaningfulString = (
       uppercaseString.includes(' ') ||   // Multi-word = probably meaningful
-      uppercaseString.length <= 12       // Short word = likely a keyword (TEA, EGGS, IRCTC)
+      uppercaseString.length <= 18       // Increased threshold: IRCTCAPP (8), BHARTPEME (9), etc. are merchants
     );
     // If single long token with no spaces, it is almost certainly a person name
     const looksLikePersonName = !isMeaningfulString;
@@ -82,8 +82,8 @@ async function findVectorMatch(cleanString, userId, transactionType) {
         const cacheWord = entry.clean_name.toUpperCase();
         
         // A. LITERAL MATCH
-        // Only trigger if keyword is long (>= 5 chars) or is a standalone word
-        const isLiteralMatch = cacheWord.length >= 5 
+        // Only trigger if keyword is long (>= 10 chars) or is a standalone word
+        const isLiteralMatch = cacheWord.length >= 10 
           ? uppercaseString.includes(cacheWord)
           // Look for exact word, allowing optional trailing 'S' for plurals (e.g. EGG/EGGS)
           : new RegExp(`\\b${cacheWord}S?\\b`, 'i').test(uppercaseString);
@@ -115,7 +115,7 @@ async function findVectorMatch(cleanString, userId, transactionType) {
           const offset_account_id = await resolveAccountFromTemplate(bestMatch.tid, userId);
           
           if (offset_account_id) {
-            console.info(`🎯 Triple-Threat Winner: ${bestMatch.type} on "${bestMatch.tid}"`);
+            console.info(`🎯 Triple-Threat Winner: ${bestMatch.type} on "${bestMatch.tid}" for "${uppercaseString.slice(0, 50)}"`);
             return {
               offset_account_id,
               confidence_score: bestMatch.score,
@@ -150,13 +150,9 @@ async function findVectorMatch(cleanString, userId, transactionType) {
         if (rule.match_type === 'EXACT') {
           isMatch = (uppercaseString === keyword);
         } else {
-          if (keyword.length < 5) {
-            // Support trailing 's' for short words (e.g. EGG vs EGGS)
-            const regex = new RegExp(`\\b${keyword}S?\\b`, 'i');
-            isMatch = regex.test(uppercaseString);
-          } else {
-            isMatch = uppercaseString.includes(keyword);
-          }
+          // Fix: Always use word boundaries to avoid partial matches like "PHONE" in "FROMPHONE"
+          const regex = new RegExp(`\\b${keyword}S?\\b`, 'i');
+          isMatch = regex.test(uppercaseString);
         }
 
         if (!isMatch) continue;
@@ -191,7 +187,7 @@ async function findVectorMatch(cleanString, userId, transactionType) {
 
     const { data: gData, error: gError } = await supabase.rpc('match_vectors', {
       query_embedding: embedding,
-      match_threshold: 0.78,
+      match_threshold: 0.55,
       match_count: 1
     });
 
@@ -201,24 +197,22 @@ async function findVectorMatch(cleanString, userId, transactionType) {
     }
 
     if (gData && gData.length > 0) {
-      const targetTemplateId = gData[0].target_template_id;
-
-      const offset_account_id = await resolveAccountFromTemplate(targetTemplateId, userId);
-
+      const bestGMatch = gData[0];
+      console.debug(`🌐 G_VEC match found: "${bestGMatch.clean_name}" (${bestGMatch.similarity.toFixed(2)}) for "${uppercaseString.slice(0, 50)}"`);
+      
+      const offset_account_id = await resolveAccountFromTemplate(bestGMatch.target_template_id, userId);
       if (offset_account_id) {
         return {
           offset_account_id,
-          confidence_score: 0.85,
+          confidence_score: bestGMatch.similarity,
           categorised_by: 'G_VEC'
         };
       }
-
-      // Template match found but no active user account mapped to this template
-      console.debug(`⚠️ Global vector match found (template:${targetTemplateId}), but no active account mapped for this user.`);
+    } else {
+      console.debug(`🌐 G_VEC: No match above threshold (0.75) for "${uppercaseString.slice(0, 50)}"`);
     }
 
     return null;
-
   } catch (err) {
     console.error('❌ findVectorMatch encountered an error:', err.message);
     return null;
@@ -332,7 +326,7 @@ async function findVectorMatchWithEmbedding(embedding, userId, balanceNature, cl
 
     const { data: gData, error: gError } = await supabase.rpc('match_vectors', {
       query_embedding: embedding,
-      match_threshold: 0.78,
+      match_threshold: 0.75,
       match_count: 1
     });
 
@@ -525,7 +519,9 @@ function sanitizeMerchantString(str) {
       const possibleNote = cleanStr.substring(lastHyphenIndex + 1).trim();
       // If it contains letters (not just bank numbers), it's highly likely a user note
       if (/[A-Za-z]/.test(possibleNote)) {
-        cleanStr = possibleNote;
+        // Fix: Preserve the prefix (merchant name) and append the note
+        // Example: 'UPI-IRCTCAPP-RZP@PTYBL-OID123' -> 'IRCTCAPP OID123'
+        cleanStr = cleanStr.substring(0, atIndex) + ' ' + possibleNote;
       }
     }
   }
@@ -544,7 +540,16 @@ function sanitizeMerchantString(str) {
     .replace(/^UPI[-/]/i, '')           // Remove UPI prefix with hyphen or slash
     .replace(/-GPAY-[0-9]+/i, '')       // Remove GPAY junk
     .replace(/@[a-zA-Z0-9.]+/i, '')     // Remove VPA handles (@okaxis, @ybl, etc.)
-    .replace(/[0-9]{6,}/g, '')          // Strip big numbers (6+ digits)
+    .replace(/\bRZP\d*\b/gi, '')        // Strip RZP (Razorpay) IDs
+    .replace(/\bOID\d*\b/gi, '')        // Strip OID (Order) IDs
+    .replace(/PAYTMQR[A-Z0-9]*/gi, '')  // Strip Paytm QR junk
+    .replace(/[0-9]+/g, ' ')            // Aggressively strip ALL numbers (Dates, small IDs)
+    .replace(/[.!?]/g, ' ')             // Strip trailing dots and noise punctuation
+    // Split common concatenated merchant names
+    .replace(/(UBER|ZOMATO|SWIGGY|AMAZON|FLIPKART|RELIANCE|INDIANRAILWAY)(?=[A-Z])/gi, '$1 ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2') // Split CamelCase if any remains
+    // Strip generic business suffixes that dilute vectors
+    .replace(/\b(SYSTEMS|INDIA|CATER|STORES|SHOP|RETAIL|PVT|LTD|SERVICES|INFRA|CORP|UNIT|MAB|RZP|OID|GPAY|PAYTMQR)\b/gi, '')
     .replace(/[-_/]/g, ' ')             // Replace hyphens/underscores/slashes with spaces
     .replace(/\s+/g, ' ')               // Collapse whitespace
     .trim();
