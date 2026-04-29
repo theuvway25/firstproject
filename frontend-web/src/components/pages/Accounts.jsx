@@ -184,7 +184,7 @@ const EditIdentifierModal = ({ account, onClose, onSuccess }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Account Node
 // ─────────────────────────────────────────────────────────────────────────────
-const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, renamingId, setRenamingId, renameValue, setRenameValue, savingId, onViewTransactions }) => {
+const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleLlm, renamingId, setRenamingId, renameValue, setRenameValue, savingId, onViewTransactions }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
@@ -243,6 +243,15 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, renamingI
                 </svg>
               </button>
             )}
+            {/* LLM toggle — all non-system accounts */}
+            <button
+              className="node-action-btn"
+              onClick={e => { e.stopPropagation(); onToggleLlm(node); }}
+              title={node.include_in_llm ? 'Exclude from AI categorisation' : 'Include in AI categorisation'}
+              style={{ opacity: node.include_in_llm ? 1 : 0.4, fontSize: 13 }}
+            >
+              🤖
+            </button>
             <button className="node-action-btn edit"
               onClick={e => { e.stopPropagation(); setRenamingId(node.account_id); setRenameValue(node.account_name); }}
               title="Rename">
@@ -278,6 +287,15 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, renamingI
                 <line x1="16" y1="17" x2="8" y2="17"/>
               </svg>
             </button>
+            {/* LLM toggle — system accounts can also be excluded */}
+            <button
+              className="node-action-btn"
+              onClick={e => { e.stopPropagation(); onToggleLlm(node); }}
+              title={node.include_in_llm ? 'Exclude from AI categorisation' : 'Include in AI categorisation'}
+              style={{ opacity: node.include_in_llm ? 1 : 0.4, fontSize: 13 }}
+            >
+              🤖
+            </button>
             <span className="system-lock" title="System account (read-only)">🔒</span>
           </div>
         )}
@@ -300,6 +318,7 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, renamingI
           {node.children.map(child => (
             <AccountNode key={child.account_id} node={child}
               onRename={onRename} onDeactivate={onDeactivate} onEditIdentifier={onEditIdentifier}
+              onToggleLlm={onToggleLlm}
               renamingId={renamingId} setRenamingId={setRenamingId}
               renameValue={renameValue} setRenameValue={setRenameValue}
               savingId={savingId} onViewTransactions={onViewTransactions} />
@@ -340,7 +359,7 @@ const Accounts = () => {
 
       const { data: accsData, error: accsErr } = await supabase
         .from('accounts')
-        .select('account_id, account_name, account_type, balance_nature, parent_account_id, is_active, is_system_generated')
+        .select('account_id, account_name, account_type, balance_nature, parent_account_id, is_active, is_system_generated, include_in_llm')
         .eq('user_id', user.id);
       if (accsErr) throw accsErr;
 
@@ -413,6 +432,25 @@ const Accounts = () => {
     await fetchAccounts();
   };
 
+  const handleToggleLlm = async (node) => {
+    const newVal = !node.include_in_llm;
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('accounts')
+      .update({ include_in_llm: newVal })
+      .eq('account_id', node.account_id)
+      .eq('user_id', user.id);
+    if (error) {
+      console.error('Toggle LLM failed:', error);
+      alert('Failed to update AI categorisation setting.');
+      return;
+    }
+    // Optimistically update local state without full refetch
+    setAccounts(prev =>
+      prev.map(a => a.account_id === node.account_id ? { ...a, include_in_llm: newVal } : a)
+    );
+  };
+
   // Navigate to Transactions page with correct filter pre-applied.
   // An account is a "source" (bank/CC) if it has an account_identifier.
   // For group accounts with no identifier, we check if any descendant has one.
@@ -478,6 +516,7 @@ const Accounts = () => {
                       <AccountNode key={node.account_id} node={node}
                         onRename={handleRename} onDeactivate={handleDeactivate}
                         onEditIdentifier={setIdentifierTarget}
+                        onToggleLlm={handleToggleLlm}
                         renamingId={renamingId} setRenamingId={setRenamingId}
                         renameValue={renameValue} setRenameValue={setRenameValue}
                         savingId={savingId}

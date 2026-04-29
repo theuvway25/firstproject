@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../shared/supabase';
 
 const AddAccountModal = ({ onClose, onCreated }) => {
-  const [form, setForm] = useState({ account_name: '', account_type: 'EXPENSE', parent_account_id: null, balance_nature: 'DEBIT' });
+  const [form, setForm] = useState({ account_name: '', account_type: 'EXPENSE', parent_account_id: null, balance_nature: 'DEBIT', include_in_llm: true });
   const [identifierForm, setIdentifierForm] = useState({ institution_name: '', account_number_last4: '', ifsc_code: '', card_last4: '', card_network: 'VISA', wallet_id: '' });
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState([]);
@@ -31,7 +31,7 @@ const AddAccountModal = ({ onClose, onCreated }) => {
   }, []);
 
   const handleReset = () => {
-    setForm({ account_name: '', account_type: 'EXPENSE', parent_account_id: null, balance_nature: 'DEBIT' });
+    setForm({ account_name: '', account_type: 'EXPENSE', parent_account_id: null, balance_nature: 'DEBIT', include_in_llm: true });
     setIdentifierForm({ institution_name: '', account_number_last4: '', ifsc_code: '', card_last4: '', card_network: 'VISA', wallet_id: '' });
   };
   const handleClose = () => { handleReset(); onClose(); };
@@ -92,7 +92,8 @@ const AddAccountModal = ({ onClose, onCreated }) => {
         balance_nature: form.balance_nature,
         parent_account_id: form.parent_account_id || null,
         is_active: true,
-        is_system_generated: false
+        is_system_generated: false,
+        include_in_llm: form.include_in_llm
       }]).select().single();
       if (error) throw error;
 
@@ -171,6 +172,35 @@ const AddAccountModal = ({ onClose, onCreated }) => {
               <option value="DEBIT">Debit</option>
               <option value="CREDIT">Credit</option>
             </select>
+          </div>
+
+          {/* ── AI Categorisation Toggle ── */}
+          <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🤖</span> Include in AI Categorisation
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                Allow the LLM to suggest this account when categorising transactions
+              </div>
+            </div>
+            <button
+              type="button"
+              id="add-account-include-in-llm-toggle"
+              onClick={() => setForm(p => ({ ...p, include_in_llm: !p.include_in_llm }))}
+              disabled={loading}
+              style={{
+                flexShrink: 0, width: 44, height: 24, borderRadius: 12, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+                background: form.include_in_llm ? 'var(--primary, #6366f1)' : 'rgba(120,120,140,0.35)',
+                position: 'relative', transition: 'background 0.2s', outline: 'none'
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: 3, left: form.include_in_llm ? 23 : 3,
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)'
+              }} />
+            </button>
           </div>
 
           {showIdentifierFields && (

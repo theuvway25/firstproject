@@ -100,6 +100,7 @@ const WelcomeScreen = ({ toggleTheme, isDarkMode, onSetupComplete }) => {
         balance_nature: t.balance_nature,
         is_system_generated: t.is_system_generated,
         template_id: t.template_id,
+        include_in_llm: t.include_in_llm ?? true, // Inherit from template
         parent_account_id: null // Will be set in next step
       }));
 

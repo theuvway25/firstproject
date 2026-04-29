@@ -214,6 +214,7 @@ const Transactions = () => {
   // ── Pipeline progress bar — time-based, synced to real completion ──────────
   const [pipelineStartedAt, setPipelineStartedAt] = useState(null); // earliest pipeline_started_at ms
   const [pipelineProgress, setPipelineProgress] = useState(0);      // 0-100
+  const [pipelineErrorMsg, setPipelineErrorMsg] = useState('');     // contextual error hint
   const progressIntervalRef = useRef(null);
   const PIPELINE_ESTIMATED_MS = 35_000; // 35 s = comfortable upper bound
 
@@ -367,34 +368,55 @@ const Transactions = () => {
       if (docIds.length > 0) {
         const { data: docStatuses } = await supabase
           .from('documents')
-          .select('document_id, grouping_status, pipeline_started_at')
+          .select('document_id, grouping_status, pipeline_started_at, created_at')
           .in('document_id', docIds);
 
-        const PIPELINE_TIMEOUT_MS = 5 * 60 * 1000;
+        const PIPELINE_TIMEOUT_MS = 5 * 60 * 1000;     // 5 min: running but no finish
+        const NULL_PIPELINE_TIMEOUT_MS = 3 * 60 * 1000; // 3 min: never started (backend asleep)
         const stillProcessing = new Set();
         const failed = new Set();
         const startedAts = [];
+        let errorHint = '';
 
         for (const doc of docStatuses || []) {
           if (doc.grouping_status === 'pipeline_done') continue;
           if (doc.grouping_status === 'pipeline_failed') {
             failed.add(doc.document_id);
+            errorHint = 'pipeline_failed';
             continue;
           }
-          // Stale pipeline check (running, done, or pending)
+
+          // Case 1: pipeline_started_at is NULL — backend was asleep and never picked this up
+          const neverStarted = (
+            !doc.pipeline_started_at &&
+            doc.created_at &&
+            (doc.grouping_status === 'done' || doc.grouping_status === 'pending') &&
+            Date.now() - new Date(doc.created_at).getTime() > NULL_PIPELINE_TIMEOUT_MS
+          );
+
+          // Case 2: pipeline started but timed out
           const isStale = (
             (doc.grouping_status === 'pipeline_running' || doc.grouping_status === 'done' || doc.grouping_status === 'pending') &&
             doc.pipeline_started_at &&
             Date.now() - new Date(doc.pipeline_started_at).getTime() > PIPELINE_TIMEOUT_MS
           );
 
+          if (neverStarted) {
+            failed.add(doc.document_id);
+            errorHint = errorHint || 'never_started';
+            continue;
+          }
+
           if (isStale) {
             failed.add(doc.document_id);
+            errorHint = errorHint || 'stale';
             continue;
           }
           stillProcessing.add(doc.document_id);
           if (doc.pipeline_started_at) startedAts.push(new Date(doc.pipeline_started_at).getTime());
         }
+
+        if (errorHint) setPipelineErrorMsg(errorHint);
 
         // Capture the earliest started_at so the progress bar knows when processing began
         if (startedAts.length > 0) {
@@ -501,33 +523,56 @@ const Transactions = () => {
     const interval = setInterval(async () => {
       const { data: docStatuses } = await supabase
         .from('documents')
-        .select('document_id, grouping_status, pipeline_started_at')
+        .select('document_id, grouping_status, pipeline_started_at, created_at')
         .in('document_id', [...processingDocIds]);
 
       const PIPELINE_TIMEOUT_MS = 5 * 60 * 1000;
+      const NULL_PIPELINE_TIMEOUT_MS = 3 * 60 * 1000;
       const stillProcessing = new Set();
       const failed = new Set();
+      let errorHint = '';
 
       for (const doc of docStatuses || []) {
         if (doc.grouping_status === 'pipeline_done') continue;
         if (doc.grouping_status === 'pipeline_failed') {
           failed.add(doc.document_id);
+          errorHint = 'pipeline_failed';
           continue;
         }
+
+        // Case 1: never started (backend was asleep)
+        const neverStarted = (
+          !doc.pipeline_started_at &&
+          doc.created_at &&
+          (doc.grouping_status === 'done' || doc.grouping_status === 'pending') &&
+          Date.now() - new Date(doc.created_at).getTime() > NULL_PIPELINE_TIMEOUT_MS
+        );
+
+        // Case 2: started but timed out
         if (
           doc.grouping_status === 'pipeline_running' &&
           doc.pipeline_started_at &&
           Date.now() - new Date(doc.pipeline_started_at).getTime() > PIPELINE_TIMEOUT_MS
         ) {
           failed.add(doc.document_id);
+          errorHint = errorHint || 'stale';
           continue;
         }
+
+        if (neverStarted) {
+          failed.add(doc.document_id);
+          errorHint = errorHint || 'never_started';
+          continue;
+        }
+
         stillProcessing.add(doc.document_id);
         // Keep pipelineStartedAt seeded in case fetchTransactions missed it
         if (doc.pipeline_started_at) {
           setPipelineStartedAt(prev => prev ?? new Date(doc.pipeline_started_at).getTime());
         }
       }
+
+      if (errorHint) setPipelineErrorMsg(errorHint);
 
       setProcessingDocIds(stillProcessing);
       setFailedDocIds(prev => new Set([...prev, ...failed]));
@@ -693,6 +738,7 @@ const Transactions = () => {
       // Move failed docs back into the processing bucket so polling resumes
       setProcessingDocIds(prev => new Set([...prev, ...failedDocIds]));
       setFailedDocIds(new Set());
+      setPipelineErrorMsg('');
     } catch (err) {
       console.error('Retry pipeline failed:', err);
       showToast('Failed to retry pipeline. Please try again.', 'error');
@@ -1929,21 +1975,38 @@ const Transactions = () => {
 
 
       {/* ── Pipeline error banner ————————————————————————————————— */}
-      {failedDocIds.size > 0 && (
-        <div className="pipeline-error-banner">
-          <span className="pipeline-error-icon">⚠</span>
-          <span>
-            {failedDocIds.size} document{failedDocIds.size > 1 ? 's' : ''} failed to process.
-          </span>
-          <button
-            className="pipeline-retry-btn"
-            onClick={handleRetryPipeline}
-            disabled={retrying}
-          >
-            {retrying ? 'Retrying…' : 'Retry'}
-          </button>
-        </div>
-      )}
+      {failedDocIds.size > 0 && (() => {
+        const isNeverStarted = pipelineErrorMsg === 'never_started';
+        const isStale       = pipelineErrorMsg === 'stale';
+        return (
+          <div className="pipeline-error-banner">
+            <div className="pipeline-error-content">
+              <span className="pipeline-error-icon">⚠</span>
+              <div className="pipeline-error-text">
+                <span className="pipeline-error-title">
+                  {failedDocIds.size} document{failedDocIds.size > 1 ? 's' : ''} failed to process.
+                </span>
+                <span className="pipeline-error-subtitle">
+                  {isNeverStarted
+                    ? 'The background processor was asleep and missed the upload. Retry to wake it up.'
+                    : isStale
+                    ? 'The pipeline timed out — the server may have gone to sleep mid-run.'
+                    : 'An unexpected pipeline error occurred.'}
+                </span>
+              </div>
+            </div>
+            <button
+              className="pipeline-retry-btn"
+              onClick={handleRetryPipeline}
+              disabled={retrying}
+            >
+              {retrying
+                ? <><span className="spinner-small" /> Waking up…</>
+                : '↺ Retry'}
+            </button>
+          </div>
+        );
+      })()}
 
       <div id="transactions-tabs" className="filter-tabs">
         <button
@@ -2074,103 +2137,105 @@ const Transactions = () => {
                 )}
               </div>
 
-              {/* ── Debit / Credit ── */}
-              <div className="filter-group">
-                <div className="filter-group-label">Transaction Type</div>
-                {['ALL', 'DEBIT', 'CREDIT'].map(type => (
-                  <label key={type} className="filter-option">
-                    <input
-                      type="radio"
-                      name="txn-type-filter"
-                      value={type}
-                      checked={txnTypeFilter === type}
-                      onChange={() => setTxnTypeFilter(type)}
-                    />
-                    <span>
-                      {type === 'ALL' ? 'All' : type === 'DEBIT' ? '− Debit' : '+ Credit'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              {filterAccounts.length > 0 && (
+              <div className="filter-popup-scrollable-body">
+                {/* ── Debit / Credit ── */}
                 <div className="filter-group">
-                  <div className="filter-group-label">Bank Account / Credit Card</div>
-                  {filterAccounts.map(acc => (
-                    <label key={acc.account_id} className="filter-option">
+                  <div className="filter-group-label">Transaction Type</div>
+                  {['ALL', 'DEBIT', 'CREDIT'].map(type => (
+                    <label key={type} className="filter-option">
                       <input
-                        type="checkbox"
-                        checked={selectedAccountIds.has(acc.account_id)}
-                        onChange={() => toggleAccountFilter(acc.account_id)}
+                        type="radio"
+                        name="txn-type-filter"
+                        value={type}
+                        checked={txnTypeFilter === type}
+                        onChange={() => setTxnTypeFilter(type)}
                       />
-                      <span>{acc.account_name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-
-              {filterDocuments.length > 0 && (
-                <div className="filter-group">
-                  <div className="filter-group-label">Uploaded Document</div>
-                  {filterDocuments.map(doc => (
-                    <label key={doc.document_id} className="filter-option">
-                      <input
-                        type="checkbox"
-                        checked={selectedDocIds.has(doc.document_id)}
-                        onChange={() => toggleDocFilter(doc.document_id)}
-                      />
-                      <span title={doc.file_name}>
-                        {doc.file_name.length > 30 ? doc.file_name.slice(0, 28) + '…' : doc.file_name}
+                      <span>
+                        {type === 'ALL' ? 'All' : type === 'DEBIT' ? '− Debit' : '+ Credit'}
                       </span>
                     </label>
                   ))}
                 </div>
-              )}
 
-              {/* ── Destination (Offset) Account ── */}
-              {cachedAccounts.length > 0 && (
-                <div className="filter-group">
-                  <div className="filter-group-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>Destination Account</span>
-                    {selectedOffsetAccountIds.size > 0 && (
-                      <button
-                        className="filter-clear-btn"
-                        style={{ fontSize: '10px', padding: '1px 6px' }}
-                        onClick={() => setSelectedOffsetAccountIds(new Set())}
-                      >
-                        Clear
-                      </button>
-                    )}
+                {filterAccounts.length > 0 && (
+                  <div className="filter-group">
+                    <div className="filter-group-label">Bank Account / Credit Card</div>
+                    {filterAccounts.map(acc => (
+                      <label key={acc.account_id} className="filter-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedAccountIds.has(acc.account_id)}
+                          onChange={() => toggleAccountFilter(acc.account_id)}
+                        />
+                        <span>{acc.account_name}</span>
+                      </label>
+                    ))}
                   </div>
-                  {/* Inline search for the account tree */}
-                  <div style={{ padding: '0 12px 6px' }}>
-                    <input
-                      type="text"
-                      placeholder="Search accounts…"
-                      value={offsetAccountSearch}
-                      onChange={e => setOffsetAccountSearch(e.target.value)}
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        width: '100%',
-                        padding: '5px 9px',
-                        fontSize: '12px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--glass-border)',
-                        background: 'var(--bg-secondary)',
-                        color: 'var(--text-primary)',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
+                )}
+
+                {filterDocuments.length > 0 && (
+                  <div className="filter-group">
+                    <div className="filter-group-label">Uploaded Document</div>
+                    {filterDocuments.map(doc => (
+                      <label key={doc.document_id} className="filter-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.has(doc.document_id)}
+                          onChange={() => toggleDocFilter(doc.document_id)}
+                        />
+                        <span title={doc.file_name}>
+                          {doc.file_name.length > 30 ? doc.file_name.slice(0, 28) + '…' : doc.file_name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Destination (Offset) Account ── */}
+                {cachedAccounts.length > 0 && (
+                  <div className="filter-group">
+                    <div className="filter-group-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Destination Account</span>
+                      {selectedOffsetAccountIds.size > 0 && (
+                        <button
+                          className="filter-clear-btn"
+                          style={{ fontSize: '10px', padding: '1px 6px' }}
+                          onClick={() => setSelectedOffsetAccountIds(new Set())}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    {/* Inline search for the account tree */}
+                    <div style={{ padding: '0 12px 6px' }}>
+                      <input
+                        type="text"
+                        placeholder="Search accounts…"
+                        value={offsetAccountSearch}
+                        onChange={e => setOffsetAccountSearch(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          width: '100%',
+                          padding: '5px 9px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--glass-border)',
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    <OffsetAccountTree
+                      accounts={cachedAccounts}
+                      selectedIds={selectedOffsetAccountIds}
+                      onToggle={toggleOffsetAccountFilter}
+                      searchQuery={offsetAccountSearch}
                     />
                   </div>
-                  <OffsetAccountTree
-                    accounts={cachedAccounts}
-                    selectedIds={selectedOffsetAccountIds}
-                    onToggle={toggleOffsetAccountFilter}
-                    searchQuery={offsetAccountSearch}
-                  />
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>

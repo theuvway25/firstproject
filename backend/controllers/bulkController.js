@@ -381,6 +381,7 @@ async function processUploadSSE(req, res) {
         .eq('user_id', userId)
         .eq('is_active', true)
         .eq('is_system_generated', false)
+        .eq('include_in_llm', true)
         .eq('balance_nature', 'DEBIT')
         .eq('account_type', 'EXPENSE')
         .not('account_name', 'in', '("Uncategorised Expense")');
@@ -416,6 +417,7 @@ async function processUploadSSE(req, res) {
         .eq('user_id', userId)
         .eq('is_active', true)
         .eq('is_system_generated', false)
+        .eq('include_in_llm', true)
         .eq('balance_nature', 'CREDIT')
         .eq('account_type', 'INCOME')
         .not('account_name', 'in', '("Uncategorised Income")');

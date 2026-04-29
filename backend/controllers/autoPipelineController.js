@@ -54,7 +54,12 @@ async function getAccountIdFromTemplate(templateId, userId) {
 
   if (existing && existing.length > 0) return existing[0].account_id;
 
-  const { data: tData } = await supabase.from('templates').select('template_name').eq('id', templateId).single();
+  const { data: tData } = await supabase
+    .from('coa_templates')
+    .select('account_name, include_in_llm')
+    .eq('template_id', templateId)
+    .maybeSingle();
+
   const fallbackNames = {
     14:  'Healthcare & Medical',
     30:  'Education',
@@ -92,9 +97,9 @@ async function getAccountIdFromTemplate(templateId, userId) {
     580: 'Digital Wallets',
   };
 
-  const accountName = (tData && tData.template_name) ? tData.template_name : fallbackNames[templateId];
+  const accountName = (tData && tData.account_name) ? tData.account_name : fallbackNames[templateId];
   
-  if (tData && tData.template_name) {
+  if (tData && tData.account_name) {
     console.debug(`📌 getAccountIdFromTemplate: Found name "${accountName}" in DB for template ${templateId}`);
   } else if (fallbackNames[templateId]) {
     console.debug(`📌 getAccountIdFromTemplate: Using fallback name "${accountName}" for template ${templateId}`);
@@ -110,7 +115,8 @@ async function getAccountIdFromTemplate(templateId, userId) {
       template_id: templateId,
       account_type: 'EXPENSE',
       is_active: true,
-      balance_nature: 'DEBIT'
+      balance_nature: 'DEBIT',
+      include_in_llm: tData?.include_in_llm ?? true  // Inherit from template, default true
     })
     .select('account_id')
     .single();
