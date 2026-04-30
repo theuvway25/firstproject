@@ -1341,6 +1341,44 @@ async function retryPipeline(req, res) {
       console.log(`[RETRY-PIPELINE] Rolled back ${draftTxnIds.length} draft transactions and reset ${draftUncatIds.length} uncategorized rows for doc ${document_id}`);
     }
 
+    // Reset any 'skipped' uncategorized_transactions rows that don't yet have a
+    // transactions row. The Python grouping job marks FAST_PATH / EXACT_THEN_DUMP
+    // rows as 'skipped' (not 'done'), so the auto-pipeline's
+    // grouping_status IN ('done','pipeline_running') filter misses them entirely.
+    // On a retry we need them visible again — we only touch rows that have no
+    // matching entry in transactions (i.e. not yet categorised).
+    const { data: skippedUncat } = await supabase
+      .from('uncategorized_transactions')
+      .select('uncategorized_transaction_id')
+      .eq('document_id', document_id)
+      .eq('user_id', userId)
+      .eq('grouping_status', 'skipped');
+
+    if (skippedUncat && skippedUncat.length > 0) {
+      const skippedIds = skippedUncat.map(r => r.uncategorized_transaction_id);
+
+      // Only reset those that don't already have a transactions row
+      const { data: alreadyCategorised } = await supabase
+        .from('transactions')
+        .select('uncategorized_transaction_id')
+        .eq('document_id', document_id)
+        .in('uncategorized_transaction_id', skippedIds);
+
+      const alreadyDoneSet = new Set(
+        (alreadyCategorised || []).map(r => r.uncategorized_transaction_id).filter(Boolean)
+      );
+      const needsReset = skippedIds.filter(id => !alreadyDoneSet.has(id));
+
+      if (needsReset.length > 0) {
+        await supabase
+          .from('uncategorized_transactions')
+          .update({ grouping_status: 'done' })
+          .in('uncategorized_transaction_id', needsReset);
+
+        console.log(`[RETRY-PIPELINE] Reset ${needsReset.length} 'skipped' uncategorized rows back to 'done' for doc ${document_id}`);
+      }
+    }
+
     // Also clear any stale llm_queue entries for this document so they don't
     // accumulate across retries.
     await supabase
