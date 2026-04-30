@@ -185,9 +185,14 @@ async function runAutoPipeline(req, res) {
       .filter(r => r.offset_account_id); // safety: must have destination
 
     if (contraRows.length > 0) {
-      const { error: contraInsertErr } = await supabase.from('transactions').upsert(contraRows, { onConflict: 'uncategorized_transaction_id', ignoreDuplicates: true });
+      const { error: contraInsertErr } = await supabase.from('transactions').insert(contraRows);
       if (contraInsertErr) {
-        logger.error('[AUTO-PIPELINE] Contra insert failed', { error: contraInsertErr.message });
+        if (contraInsertErr.code === '23505') {
+          // Rows already written by a previous run — safe to skip on retry
+          logger.warn('[AUTO-PIPELINE] Contra rows already exist (retry), skipping duplicate insert');
+        } else {
+          logger.error('[AUTO-PIPELINE] Contra insert failed', { error: contraInsertErr.message });
+        }
       } else {
         logger.info('[AUTO-PIPELINE] Contra rows inserted', { count: contraRows.length });
         const contraUncatIds = contraRows.map(r => r.uncategorized_transaction_id).filter(Boolean);
@@ -313,7 +318,7 @@ async function runAutoPipeline(req, res) {
       if (insertRows.length === 0) {
         logger.warn('[AUTO-PIPELINE] No valid rows to insert after account_id check');
       } else {
-        const { error: insertErr } = await supabase.from('transactions').upsert(insertRows, { onConflict: 'uncategorized_transaction_id', ignoreDuplicates: true });
+        const { error: insertErr } = await supabase.from('transactions').insert(insertRows);
         
         if (!insertErr) {
           const ids = insertRows.map(r => r.uncategorized_transaction_id);
@@ -323,6 +328,15 @@ async function runAutoPipeline(req, res) {
             .in('uncategorized_transaction_id', ids);
           
           logger.info('[AUTO-PIPELINE] Batch insert OK', { count: ids.length });
+        } else if (insertErr.code === '23505') {
+          // Rows already written by a previous (partial) run — treat as success on retry
+          logger.warn('[AUTO-PIPELINE] Batch insert skipped — rows already exist (retry idempotency)', { count: insertRows.length });
+          // Still mark them as categorized so they don't re-enter the pipeline
+          const ids = insertRows.map(r => r.uncategorized_transaction_id);
+          await supabase
+            .from('uncategorized_transactions')
+            .update({ grouping_status: 'categorized' })
+            .in('uncategorized_transaction_id', ids);
         } else {
           logger.error('[AUTO-PIPELINE] Batch insert failed', { error: insertErr.message });
         }
@@ -331,7 +345,10 @@ async function runAutoPipeline(req, res) {
 
     if (llmLeftovers.length > 0) {
       const queueRows = llmLeftovers.map(id => ({ uncategorized_transaction_id: id, user_id, document_id, status: 'pending' }));
-      await supabase.from('llm_queue').upsert(queueRows, { onConflict: 'uncategorized_transaction_id', ignoreDuplicates: true });
+      const { error: llmInsertErr } = await supabase.from('llm_queue').insert(queueRows);
+      if (llmInsertErr && llmInsertErr.code !== '23505') {
+        logger.error('[AUTO-PIPELINE] LLM queue insert failed', { error: llmInsertErr.message });
+      }
     }
 
     res.json({ resolved: resolvedRows.length, llm_pending: llmLeftovers.length, document_id });
