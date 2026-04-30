@@ -1275,6 +1275,51 @@ async function retryPipeline(req, res) {
       })
       .eq('document_id', document_id);
 
+    // 3b. Roll back any partially-written state from the failed run so the
+    //     pipeline doesn't skip those rows on retry.
+    //
+    //     (i) uncategorized_transactions rows that were marked 'categorized'
+    //         by the failed run must be reset so they are picked up again.
+    //     (ii) DRAFT transactions rows written before the crash must be deleted
+    //          so the idempotent upsert can rewrite them with correct data.
+    //
+    // First, find which uncategorized_transaction_ids for this doc were
+    // already inserted as DRAFT (i.e. written by the failed run but never approved).
+    const { data: draftTxns } = await supabase
+      .from('transactions')
+      .select('transaction_id, uncategorized_transaction_id')
+      .eq('document_id', document_id)
+      .eq('user_id', userId)
+      .eq('posting_status', 'DRAFT');
+
+    if (draftTxns && draftTxns.length > 0) {
+      const draftTxnIds = draftTxns.map(t => t.transaction_id);
+      const draftUncatIds = draftTxns.map(t => t.uncategorized_transaction_id).filter(Boolean);
+
+      // Delete ledger entries first (FK constraint), then the transactions rows.
+      await supabase.from('ledger_entries').delete().in('transaction_id', draftTxnIds);
+      await supabase.from('transactions').delete().in('transaction_id', draftTxnIds);
+
+      // Reset the corresponding uncategorized_transactions back to 'done' so
+      // the pipeline picks them up again.
+      if (draftUncatIds.length > 0) {
+        await supabase
+          .from('uncategorized_transactions')
+          .update({ grouping_status: 'done' })
+          .in('uncategorized_transaction_id', draftUncatIds);
+      }
+
+      console.log(`[RETRY-PIPELINE] Rolled back ${draftTxnIds.length} draft transactions and reset ${draftUncatIds.length} uncategorized rows for doc ${document_id}`);
+    }
+
+    // Also clear any stale llm_queue entries for this document so they don't
+    // accumulate across retries.
+    await supabase
+      .from('llm_queue')
+      .delete()
+      .eq('document_id', document_id)
+      .eq('status', 'pending');
+
     // 4. Re-trigger the auto-pipeline (fire-and-forget — same pattern as Python grouping job)
     const internalUrl = `http://localhost:${process.env.PORT || 3000}/internal/auto-pipeline`;
     fetch(internalUrl, {

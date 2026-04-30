@@ -185,7 +185,7 @@ async function runAutoPipeline(req, res) {
       .filter(r => r.offset_account_id); // safety: must have destination
 
     if (contraRows.length > 0) {
-      const { error: contraInsertErr } = await supabase.from('transactions').insert(contraRows);
+      const { error: contraInsertErr } = await supabase.from('transactions').upsert(contraRows, { onConflict: 'uncategorized_transaction_id', ignoreDuplicates: true });
       if (contraInsertErr) {
         logger.error('[AUTO-PIPELINE] Contra insert failed', { error: contraInsertErr.message });
       } else {
@@ -313,7 +313,7 @@ async function runAutoPipeline(req, res) {
       if (insertRows.length === 0) {
         logger.warn('[AUTO-PIPELINE] No valid rows to insert after account_id check');
       } else {
-        const { error: insertErr } = await supabase.from('transactions').insert(insertRows);
+        const { error: insertErr } = await supabase.from('transactions').upsert(insertRows, { onConflict: 'uncategorized_transaction_id', ignoreDuplicates: true });
         
         if (!insertErr) {
           const ids = insertRows.map(r => r.uncategorized_transaction_id);
@@ -331,7 +331,7 @@ async function runAutoPipeline(req, res) {
 
     if (llmLeftovers.length > 0) {
       const queueRows = llmLeftovers.map(id => ({ uncategorized_transaction_id: id, user_id, document_id, status: 'pending' }));
-      await supabase.from('llm_queue').insert(queueRows);
+      await supabase.from('llm_queue').upsert(queueRows, { onConflict: 'uncategorized_transaction_id', ignoreDuplicates: true });
     }
 
     res.json({ resolved: resolvedRows.length, llm_pending: llmLeftovers.length, document_id });
