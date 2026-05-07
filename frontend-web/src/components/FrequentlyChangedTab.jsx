@@ -5,6 +5,7 @@ import {
   History, Loader2, FileText, CheckCircle2, 
   AlertTriangle, Search, ChevronRight, Activity, Percent, Zap
 } from 'lucide-react';
+import { formatDate } from '../utils/dateUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
@@ -67,7 +68,7 @@ const FrequentlyChangedTab = () => {
                                     <span style={styles.statusBadge}>{row.qc_status}</span>
                                 </div>
                                 <div style={{ flex: 1, fontSize: '11px', opacity: 0.5 }}>
-                                    {new Date(row.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                    {formatDate(row.created_at)}
                                 </div>
                             </div>
                         ))

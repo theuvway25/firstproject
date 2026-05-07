@@ -5,6 +5,7 @@ import {
   Database, Search, Plus, X, 
   Loader2, CheckCircle, AlertCircle, Trash2, Cpu, ChevronLeft, ChevronRight, Upload, FileText
 } from 'lucide-react';
+import { formatDate } from '../utils/dateUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 const PAGE_SIZE = 50;
@@ -149,7 +150,7 @@ const VectorCacheTab = () => {
                                 <div style={{ flex: 1 }}>
                                     <span style={styles.approvalBadge}>{row.approval_count}</span>
                                 </div>
-                                <div style={{ flex: 1, fontSize: '10px', opacity: 0.5 }}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+                                <div style={{ flex: 1, fontSize: '10px', opacity: 0.5 }}>{formatDate(row.created_at)}</div>
                                 <div style={{ width: '60px', display: 'flex', justifyContent: 'center' }}>
                                     <button style={styles.iconBtn} onClick={() => handleDelete(row.cache_id)}><Trash2 size={14}/></button>
                                 </div>

@@ -4,6 +4,7 @@ import { supabase } from '../../shared/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import '../../styles/Analytics.css';
+import { formatDate } from '../../utils/dateUtils';
 
 /**
  * Compute date range for a given period
@@ -59,14 +60,7 @@ const formatCurrency = (amount) => {
   return `${isNegative ? '-' : ''}₹${Math.abs(amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 };
 
-/**
- * Format date as locale string
- */
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
+
 
 /**
  * Known COGS-type root account name patterns
@@ -556,10 +550,7 @@ const Analytics = () => {
     } = plData;
 
     // Format date range for header
-    const fmtDate = (d) => {
-      const dt = new Date(d + 'T00:00:00');
-      return dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    };
+    const fmtDate = (d) => formatDate(d);
 
     const exportPLToCSV = () => {
       const rows = [];
@@ -877,10 +868,7 @@ const Analytics = () => {
 
     const { assetsGroups, liabilitiesEquitiesGroups, totalAssets, totalLiabilitiesEquities, dateRange } = balanceData;
 
-    const fmtDate = (d) => {
-      const dt = new Date(d + 'T00:00:00');
-      return dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    };
+    const fmtDate = (d) => formatDate(d);
 
     const exportBalanceToCSV = () => {
       const rows = [];

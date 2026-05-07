@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../shared/supabase';
 import { useNavigate } from 'react-router-dom';
 import '../../styles/Overview.css';
+import { formatDate } from '../../utils/dateUtils';
 
 const Overview = () => {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ const Overview = () => {
   const [activeBarIndex, setActiveBarIndex] = useState(null);
   const [activeDonutIndex, setActiveDonutIndex] = useState(null);
   const [breakdownModal, setBreakdownModal] = useState({ isOpen: false, type: null, data: [] });
+  const [categoryTxnModal, setCategoryTxnModal] = useState({ isOpen: false, categoryName: '', txns: [] });
   const [globalLedgerMap, setGlobalLedgerMap] = useState({});
   // Ledger-based asset/liability state — computed identically to Analytics Balance Sheet
   const [assetsLedger, setAssetsLedger] = useState({ total: 0, breakdown: [] });
@@ -234,10 +236,10 @@ const Overview = () => {
         const day = d.getDay();
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         const weekStart = new Date(d.setDate(diff));
-        timeKey = weekStart.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        timeKey = formatDate(weekStart);
         sortTime = weekStart.getTime();
       } else {
-        timeKey = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        timeKey = formatDate(date);
       }
 
       if (!monthlyData[timeKey]) {
@@ -723,8 +725,7 @@ const Overview = () => {
               }
 
               const sign = isDebit ? '-' : '+';
-              const dateSplit = txn.txn_date.split('-');
-              const displayDate = dateSplit.length === 3 ? `${dateSplit[2]}/${dateSplit[1]}/${dateSplit[0]}` : txn.txn_date;
+              const displayDate = formatDate(txn.txn_date);
 
               return (
                 <tr key={txn.uncategorized_transaction_id}>
@@ -803,40 +804,47 @@ const Overview = () => {
               })}
               {breakdownModal.data.length === 0 && <div className="empty-state">No data available.</div>}
             </div>
-            {/* Redirect footer */}
-            <div style={{
-              padding: '12px 20px',
-              borderTop: '1px solid var(--border-color)',
-              display: 'flex',
-              justifyContent: 'flex-end',
-            }}>
-              <button
-                onClick={() => {
-                  setBreakdownModal({ isOpen: false, type: null, data: [] });
-                  navigate(
-                    breakdownModal.modalType === 'ASSETS' || breakdownModal.modalType === 'LIABILITIES'
-                      ? '/analytics?tab=balance'
-                      : '/transactions'
-                  );
-                }}
-                style={{
-                  background: 'var(--accent-gradient, #6366f1)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 18px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                {breakdownModal.modalType === 'ASSETS' || breakdownModal.modalType === 'LIABILITIES'
-                  ? 'View Balance Sheet →'
-                  : 'View All Transactions →'}
-              </button>
+          </div>
+        </div>
+      )}
+
+      {categoryTxnModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setCategoryTxnModal({ isOpen: false, categoryName: '', txns: [] })}>
+          <div className="modal-content" style={{ maxWidth: '650px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: '18px' }}>{categoryTxnModal.categoryName} <span style={{ color: 'var(--text-secondary)', fontWeight: 500, marginLeft: '4px' }}>({categoryTxnModal.txns.length} transactions)</span></h2>
+              <button className="close-btn" onClick={() => setCategoryTxnModal({ isOpen: false, categoryName: '', txns: [] })}>✕</button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: '60vh', padding: 0 }}>
+              <table className="recent-transactions-table" style={{ margin: 0 }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 1 }}>
+                  <tr>
+                    <th style={{ padding: '16px 24px' }}>DATE</th>
+                    <th style={{ padding: '16px 24px' }}>DETAILS</th>
+                    <th style={{ padding: '16px 24px', textAlign: 'right' }}>AMOUNT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryTxnModal.txns.map(txn => {
+                    const isDebit = txn.debit > 0;
+                    const amt = isDebit ? txn.debit : txn.credit;
+                    const sign = isDebit ? '-' : '+';
+                    const displayDate = formatDate(txn.txn_date);
+                    return (
+                      <tr key={txn.uncategorized_transaction_id}>
+                        <td style={{ padding: '16px 24px' }}>{displayDate}</td>
+                        <td className="txn-details" style={{ padding: '16px 24px' }}>{txn.details}</td>
+                        <td className={`txn-amount ${isDebit ? 'negative' : 'positive'}`} style={{ padding: '16px 24px', textAlign: 'right' }}>
+                          {sign}{formatCurrency(amt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {categoryTxnModal.txns.length === 0 && (
+                    <tr><td colSpan="3" className="empty-state">No transactions found.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

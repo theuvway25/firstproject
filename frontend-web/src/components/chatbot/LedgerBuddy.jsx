@@ -294,13 +294,13 @@ const LedgerBuddy = ({ user }) => {
     const isBlocked = routing.lane === 'OUT_OF_SCOPE';
     if (isBlocked) {
       return (
-        <span className="lb-routing-badge blocked" title="Out of scope — no AI call made">
+        <span className="lb-routing-badge blocked" title="This question is outside the scope of financial topics LedgerBuddy can help with">
           🚫 Blocked
         </span>
       );
     }
     return (
-      <span className={`lb-routing-badge ${isStats ? 'stats' : 'llm'}`} title={`${routing.lane} • ${routing.latencyMs || '—'}ms`}>
+      <span className={`lb-routing-badge ${isStats ? 'stats' : 'llm'}`} title={isStats ? 'Answered instantly from your transaction data' : `Answered by AI in ${routing.latencyMs || '—'}ms`}>
         {isStats ? <DatabaseIcon /> : <ZapIcon />}
         {isStats ? 'Data' : 'AI'}
         {routing.latencyMs ? ` • ${routing.latencyMs}ms` : ''}
@@ -385,13 +385,13 @@ const LedgerBuddy = ({ user }) => {
             </div>
           </div>
           <div className="lb-header-actions">
-            <button onClick={fetchHistory} className="lb-header-btn" title="Load history">
+            <button onClick={fetchHistory} className="lb-header-btn" title="Reload your past conversation history">
               <HistoryIcon size={16} />
             </button>
-            <button onClick={handleClear} className="lb-header-btn" title="Clear chat">
+            <button onClick={handleClear} className="lb-header-btn" title="Clear this conversation and start fresh">
               <TrashIcon size={14} />
             </button>
-            <button onClick={() => setIsOpen(false)} className="lb-header-btn lb-close-btn" title="Close">
+            <button onClick={() => setIsOpen(false)} className="lb-header-btn lb-close-btn" title="Minimise LedgerBuddy">
               <XIcon size={16} />
             </button>
           </div>

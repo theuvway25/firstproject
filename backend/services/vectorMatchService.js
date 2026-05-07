@@ -575,8 +575,22 @@ function sanitizeMerchantString(str) {
     .trim();
 }
 
+/**
+ * isPersonName
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Returns true if the string looks like a UPI person name (single token, >18 chars).
+ * Mirrors the meaningfulness guard already used inside findVectorMatch / findVectorMatchWithEmbedding.
+ * Short merchant codes like IRCTCAPP (8) or BHARTPEME (9) are safely below the threshold.
+ */
+function isPersonName(str) {
+  if (!str) return false;
+  const s = str.trim().toUpperCase();
+  return !s.includes(' ') && s.length > 18;
+}
+
 module.exports = {
   findVectorMatch,
   findVectorMatchWithEmbedding,
-  sanitizeMerchantString
+  sanitizeMerchantString,
+  isPersonName
 };

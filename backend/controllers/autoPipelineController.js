@@ -26,14 +26,6 @@ const personalCacheService = require('../services/personalCacheService');
 const vectorMatchService = require('../services/vectorMatchService');
 const contraRadarService = require('../services/contraRadarService');
 
-// ── Person-name heuristic ───────────────────────────────────────────────────
-function isPotentialPerson(cleanName) {
-  if (!cleanName) return false;
-  const s = cleanName.trim().toUpperCase();
-  const words = s.split(/\s+/);
-  return /^[A-Z\s]{4,40}$/.test(s) && words.length >= 1 && words.length <= 4;
-}
-
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function verifyInternalSecret(req) {
   const authHeader = req.headers['authorization'] || '';
@@ -286,12 +278,16 @@ async function runAutoPipeline(req, res) {
       }));
     }
 
-    // 5. Fan-out group siblings using nonContraPending
+    // 5. Fan-out group siblings using nonContraPending:
+    //    - Resolved groups: apply the same result to all siblings.
+    //    - Unresolved groups (null): do NOT queue siblings — only the group rep
+    //      was inserted into llm_queue above. bulkController will fan-out via
+    //      group_id after the LLM resolves the rep. (Fix 4)
     for (const txn of nonContraPending) {
       if (txn.group_id && groupRepMap.get(txn.group_id) !== txn.uncategorized_transaction_id) {
-        const res = groupResultMap.get(txn.group_id);
-        if (res) resolvedRows.push({ txn, result: res });
-        else if (res === null) llmLeftovers.push(txn.uncategorized_transaction_id);
+        const groupRes = groupResultMap.get(txn.group_id);
+        if (groupRes) resolvedRows.push({ txn, result: groupRes });
+        // If groupRes === null, the rep is in llm_queue; skip sibling — bulkController handles fan-out.
       }
     }
 

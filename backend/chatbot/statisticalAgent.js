@@ -193,6 +193,40 @@ async function computePnL(userId, from, to) {
 // ════════════════════════════════════════════════════════════════════════
 // CORE: computeBalanceSheet — Assets & Liabilities from ledger_entries
 // ════════════════════════════════════════════════════════════════════════
+
+const formatDate = (dateStringOrDate) => {
+  if (!dateStringOrDate) return '';
+  let date;
+  if (typeof dateStringOrDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStringOrDate)) {
+    const [year, month, day] = dateStringOrDate.split('-');
+    date = new Date(year, month - 1, day);
+  } else {
+    date = new Date(dateStringOrDate);
+  }
+  if (isNaN(date.getTime())) return dateStringOrDate;
+  const day = String(date.getDate()).padStart(2, '0');
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const formatMonthYear = (dateStringOrDate) => {
+  if (!dateStringOrDate) return '';
+  let date;
+  if (typeof dateStringOrDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStringOrDate)) {
+    const [year, month, day] = dateStringOrDate.split('-');
+    date = new Date(year, month - 1, day);
+  } else {
+    date = new Date(dateStringOrDate);
+  }
+  if (isNaN(date.getTime())) return dateStringOrDate;
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+  return `${month}-${year}`;
+};
+
 async function computeBalanceSheet(userId) {
   const { data: entries, error } = await supabase
     .from('ledger_entries')
@@ -654,7 +688,7 @@ async function hMaxTransaction(userId, q) {
   const {data,error}=await query; if(error) throw error;
   const txn=(data||[]).find(t=>t.accounts?.account_type==='EXPENSE'&&!isCatchAll(t.accounts?.account_name));
   if(!txn) return {text:`No categorized expense found for **${label}**.`, data:null};
-  const d=new Date(txn.transaction_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  const d = formatDate(txn.transaction_date);
   return {text:`💸 **Largest Single Expense (${label}):**\n\n  • Amount: **${INR(+txn.amount)}**\n  • Category: ${txn.accounts?.account_name||'N/A'}\n  • Details: ${txn.details||'N/A'}\n  • Date: ${d}`, data:txn};
 }
 
@@ -669,7 +703,7 @@ async function hMaxCredit(userId, q) {
   const {data,error}=await query; if(error) throw error;
   const txn=(data||[]).find(t=>t.accounts?.account_type==='INCOME'&&!isCatchAll(t.accounts?.account_name));
   if(!txn) return {text:`No categorized income found for **${label}**.`, data:null};
-  const d=new Date(txn.transaction_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  const d = formatDate(txn.transaction_date);
   return {text:`💚 **Largest Income Transaction (${label}):**\n\n  • Amount: **${INR(+txn.amount)}**\n  • Category: ${txn.accounts?.account_name||'N/A'}\n  • Details: ${txn.details||'N/A'}\n  • Date: ${d}`, data:txn};
 }
 
@@ -684,7 +718,7 @@ async function hMinTransaction(userId, q) {
   const {data,error}=await query; if(error) throw error;
   const txn=(data||[]).find(t=>t.accounts?.account_type==='EXPENSE'&&!isCatchAll(t.accounts?.account_name));
   if(!txn) return {text:`No categorized expense found for **${label}**.`, data:null};
-  const d=new Date(txn.transaction_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  const d = formatDate(txn.transaction_date);
   return {text:`🔍 **Smallest Expense (${label}):**\n\n  • Amount: **${INR(+txn.amount)}**\n  • Category: ${txn.accounts?.account_name||'N/A'}\n  • Details: ${txn.details||'N/A'}\n  • Date: ${d}`, data:txn};
 }
 
@@ -741,7 +775,7 @@ async function hMonthlySummary(userId, q) {
     (data||[]).forEach(txn=>{
       const name=txn.accounts?.account_name, aType=txn.accounts?.account_type;
       if(isCatchAll(name)) return;
-      const month=new Date(txn.transaction_date).toLocaleDateString('en-IN',{month:'short',year:'numeric'});
+      const month=formatMonthYear(txn.transaction_date);
       if(!monthMap[month]) monthMap[month]={income:0,expense:0};
       if(aType==='INCOME'&&txn.transaction_type==='CREDIT') monthMap[month].income+=+(txn.amount||0);
       else if(aType==='EXPENSE'&&txn.transaction_type==='DEBIT') monthMap[month].expense+=+(txn.amount||0);
@@ -828,7 +862,7 @@ async function hRecentTransactions(userId, q) {
   if (!valid.length) return {text: `No categorized transactions found for **${label}**.`, data: []};
 
   const lines = valid.map((t, i) => {
-    const d = new Date(t.transaction_date).toLocaleDateString('en-IN', {day: 'numeric', month: 'short', year: 'numeric'});
+    const d = formatDate(t.transaction_date);
     const icon = t.transaction_type === 'CREDIT' ? '🟢' : '🔴';
     return `  ${i+1}. ${icon} **${INR(+t.amount)}** — ${t.details || t.accounts?.account_name || 'N/A'} (${d})`;
   });
@@ -866,7 +900,7 @@ async function hSavingsTrend(userId, q) {
     if (isCatchAll(name)) return;
     const d = new Date(txn.transaction_date);
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const monthLabel = d.toLocaleDateString('en-IN',{month:'short',year:'numeric'});
+    const monthLabel = formatMonthYear(d);
     if (!monthMap[key]) monthMap[key] = {label: monthLabel, income:0, expense:0};
     const amt = Number(txn.amount || 0);
     if (aType==='INCOME' && txn.transaction_type==='CREDIT') monthMap[key].income += amt;

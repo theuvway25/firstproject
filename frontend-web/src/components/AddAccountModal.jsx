@@ -141,7 +141,7 @@ const AddAccountModal = ({ onClose, onCreated }) => {
       <div className="add-account-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Add Account</h2>
-          <button className="close-modal-btn" onClick={handleClose}>✕</button>
+          <button className="close-modal-btn" onClick={handleClose} title="Close without saving">✕</button>
         </div>
         <div className="modal-body">
           <div className="form-group">
@@ -181,13 +181,14 @@ const AddAccountModal = ({ onClose, onCreated }) => {
                 <span>🤖</span> Include in AI Categorisation
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                Allow the LLM to suggest this account when categorising transactions
+                When enabled, AI will suggest this account as a category when you're reviewing transactions
               </div>
             </div>
             <button
               type="button"
               id="add-account-include-in-llm-toggle"
               onClick={() => setForm(p => ({ ...p, include_in_llm: !p.include_in_llm }))}
+              title={form.include_in_llm ? 'AI will suggest this account — click to exclude it' : 'AI will not suggest this account — click to include it'}
               disabled={loading}
               style={{
                 flexShrink: 0, width: 44, height: 24, borderRadius: 12, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
@@ -291,8 +292,8 @@ const AddAccountModal = ({ onClose, onCreated }) => {
           )}
         </div>
         <div className="modal-footer">
-          <button className="cancel-btn" onClick={handleClose} disabled={loading}>Cancel</button>
-          <button className="submit-btn" onClick={handleSubmit} disabled={!form.account_name.trim() || loading}>
+          <button className="cancel-btn" onClick={handleClose} disabled={loading} title="Discard and close">Cancel</button>
+          <button className="submit-btn" onClick={handleSubmit} disabled={!form.account_name.trim() || loading} title={!form.account_name.trim() ? 'Enter an account name to continue' : 'Save and add this account'}>
             {loading ? <span className="spinner"></span> : 'Add Account'}
           </button>
         </div>

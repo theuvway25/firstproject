@@ -225,7 +225,7 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
               className="node-action-btn"
               style={{ color: 'var(--primary-action, #7c6ff7)', opacity: 0.85 }}
               onClick={e => { e.stopPropagation(); onViewTransactions(node.account_id); }}
-              title="View transactions"
+              title="View all transactions linked to this account"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -237,7 +237,7 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
             {node.identifier && (
               <button className="node-action-btn identifier"
                 onClick={e => { e.stopPropagation(); onEditIdentifier(node); }}
-                title="Edit bank/card details">
+                title="Update the bank or card number linked to this account">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
                 </svg>
@@ -247,21 +247,21 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
             <button
               className="node-action-btn"
               onClick={e => { e.stopPropagation(); onToggleLlm(node); }}
-              title={node.include_in_llm ? 'Exclude from AI categorisation' : 'Include in AI categorisation'}
+              title={node.include_in_llm ? 'Exclude this account from AI-suggested categories' : 'Include this account when AI suggests categories'}
               style={{ opacity: node.include_in_llm ? 1 : 0.4, fontSize: 13 }}
             >
               🤖
             </button>
             <button className="node-action-btn edit"
               onClick={e => { e.stopPropagation(); setRenamingId(node.account_id); setRenameValue(node.account_name); }}
-              title="Rename">
+              title="Rename this account">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
             </button>
             <button className="node-action-btn deactivate"
-              onClick={e => { e.stopPropagation(); onDeactivate(node); }} title="Deactivate">
+              onClick={e => { e.stopPropagation(); onDeactivate(node); }} title="Remove this account from your chart">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -278,7 +278,7 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
               className="node-action-btn"
               style={{ color: 'var(--primary-action, #7c6ff7)', opacity: 0.85 }}
               onClick={e => { e.stopPropagation(); onViewTransactions(node.account_id); }}
-              title="View transactions"
+              title="View all transactions linked to this account"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -291,12 +291,12 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
             <button
               className="node-action-btn"
               onClick={e => { e.stopPropagation(); onToggleLlm(node); }}
-              title={node.include_in_llm ? 'Exclude from AI categorisation' : 'Include in AI categorisation'}
+              title={node.include_in_llm ? 'Exclude this account from AI-suggested categories' : 'Include this account when AI suggests categories'}
               style={{ opacity: node.include_in_llm ? 1 : 0.4, fontSize: 13 }}
             >
               🤖
             </button>
-            <span className="system-lock" title="System account (read-only)">🔒</span>
+            <span className="system-lock" title="This is a built-in system account and cannot be edited">🔒</span>
           </div>
         )}
 
@@ -304,11 +304,11 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
           <div className="node-actions">
             <button className="node-action-btn save"
               onClick={e => { e.stopPropagation(); onRename(node.account_id, renameValue); }}
-              disabled={savingId === node.account_id} title="Save">
+              disabled={savingId === node.account_id} title="Save new name">
               {savingId === node.account_id ? <span className="spinner-xs" /> : '✓'}
             </button>
             <button className="node-action-btn cancel"
-              onClick={e => { e.stopPropagation(); setRenamingId(null); setRenameValue(''); }} title="Cancel">✕</button>
+              onClick={e => { e.stopPropagation(); setRenamingId(null); setRenameValue(''); }} title="Discard changes">✕</button>
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ import {
 import API from "../api/api";
 import { useNavigate } from "react-router-dom";
 import { useParsing, extractionSteps } from "../context/ParsingContext";
+import { formatDate } from "../utils/dateUtils";
 
 // ── Circular Processing Indicator ────────────────────────────────────────────
 const STAGE_META = {
@@ -159,12 +160,7 @@ export default function ParsingPage() {
             setRecentDocs(recentRes.data.data);
             setTotalResults(recentRes.data.total);
             
-            // Extract unique banks from recent docs for the filter (simplified)
-            // Ideally we'd have an endpoint for this
-            if (availableBanks.length === 0 && recentRes.data.data.length > 0) {
-                 const banks = [...new Set(recentRes.data.data.map(d => d.institution_name).filter(Boolean))].sort();
-                 setAvailableBanks(banks);
-            }
+
         } catch (err) {
             console.error("Failed to fetch dashboard data", err);
         } finally {
@@ -357,7 +353,7 @@ export default function ParsingPage() {
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setFile(null); setPassword(""); setShowPassword(false); setStatus("IDLE"); setError(""); }}
                                         style={{ background: 'rgba(231, 76, 60, 0.1)', color: '#e74c3c', border: 'none', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
-                                        title="Remove file"
+                                        title="Remove this file"
                                     >
                                         <Trash2 size={14} />
                                     </button>
@@ -373,6 +369,7 @@ export default function ParsingPage() {
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
+                                        title={showPassword ? 'Hide password' : 'Show password'}
                                         style={{
                                             position: 'absolute',
                                             right: '12px',
@@ -568,7 +565,7 @@ export default function ParsingPage() {
                                 }}>
                                     <Code size={12} /> {doc.transaction_parsed_type || 'CODE'}
                                 </span></td>
-                                <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{new Date(doc.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
+                                <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>{formatDate(doc.created_at)}</td>
                                 <td style={{ textAlign: 'center', padding: '1rem 2rem' }}>
                                     <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center' }}>
                                         <button

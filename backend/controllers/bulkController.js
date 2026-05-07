@@ -2,6 +2,8 @@ const logger = require('../utils/logger');
 
 const supabase = require('../config/supabaseClient');
 const llmBatchFallback = require('../services/llmBatchFallback');
+const { isGarbage } = require('../services/personalCacheService');
+const { isPersonName } = require('../services/vectorMatchService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // processUploadSSE
@@ -239,7 +241,7 @@ async function processUploadSSE(req, res) {
       .from('llm_queue')
       .select(
         'uncategorized_transaction_id, ' +
-        'uncategorized_transactions!inner(uncategorized_transaction_id, details, txn_date, debit, credit, account_id, document_id, vector_cache_ref)'
+        'uncategorized_transactions!inner(uncategorized_transaction_id, details, txn_date, debit, credit, account_id, document_id, vector_cache_ref, clean_merchant_name, group_id)'
       )
       .in('document_id', document_ids)
       .eq('user_id', userId)
@@ -321,6 +323,8 @@ async function processUploadSSE(req, res) {
         account_id: u.account_id,
         document_id: u.document_id,
         vector_cache_ref: u.vector_cache_ref,
+        clean_merchant_name: u.clean_merchant_name || null,
+        group_id: u.group_id || null,
         base_account_id: u.account_id || null,
         offset_account_id: null,
       };
@@ -332,22 +336,131 @@ async function processUploadSSE(req, res) {
       .filter(Boolean);
 
     // ==========================================
-    // STAGE 4: BATCH LLM FALLBACK
+    // PRE-LLM FILTER 1 — GARBAGE
+    // Rows whose raw details are system noise (pure UPI refs, hex IDs, VPA
+    // handles, etc.) will never produce a useful LLM result.  Short-circuit
+    // them immediately as FALLBACK / attention HIGH.
     // ==========================================
-    emit(`Asking AI to categorise ${llmTransactions.length} transactions…`, 'llm');
-    logger.info('Stage 4: LLM Batch Fallback', { count: llmTransactions.length });
+    const garbageIds = new Set();
+    const garbageRows = [];
+    const afterGarbage  = [];
 
-    const finalResults = [...llmTransactions]; // mutable array for applyLlmResult mutations
+    for (const txn of llmTransactions) {
+      if (isGarbage(txn.details)) {
+        logger.info('[PRE-LLM] Garbage filter hit', { id: txn.uncategorized_transaction_id, details: txn.details?.slice(0, 60) });
+        txn.offset_account_id = txn.debit ? uncategorisedExpenseId : uncategorisedIncomeId;
+        txn.categorised_by    = 'FALLBACK';
+        txn.confidence_score  = 0.0;
+        txn.attention_level   = 'HIGH';
+        garbageIds.add(txn.uncategorized_transaction_id);
+        garbageRows.push(txn);
+      } else {
+        afterGarbage.push(txn);
+      }
+    }
 
-    const debitLeftovers  = llmTransactions.filter(t => t.debit);
-    const creditLeftovers = llmTransactions.filter(t => t.credit);
+    if (garbageRows.length > 0) {
+      await flushToDb(garbageRows);
+      // Mark llm_queue rows as done
+      await supabase.from('llm_queue').update({ status: 'done' })
+        .in('uncategorized_transaction_id', [...garbageIds]).eq('user_id', userId);
+      // Mark uncategorized_transactions as categorized
+      await supabase.from('uncategorized_transactions').update({ grouping_status: 'categorized' })
+        .in('uncategorized_transaction_id', [...garbageIds]);
+      logger.info('[PRE-LLM] Garbage filter flushed', { count: garbageRows.length });
+    }
+
+    // ==========================================
+    // PRE-LLM FILTER 2 — PERSON NAME
+    // Single-token strings longer than 18 chars (e.g. MRVARADVIDYADHAR) are
+    // almost certainly UPI person-to-person payments.  LLM cannot categorise
+    // them reliably; mark as FALLBACK immediately.
+    // ==========================================
+    const personIds  = new Set();
+    const personRows = [];
+    const afterPerson = [];
+
+    for (const txn of afterGarbage) {
+      if (isPersonName(txn.clean_merchant_name)) {
+        logger.info('[PRE-LLM] Person-name filter hit', { id: txn.uncategorized_transaction_id, name: txn.clean_merchant_name });
+        txn.offset_account_id = txn.debit ? uncategorisedExpenseId : uncategorisedIncomeId;
+        txn.categorised_by    = 'FALLBACK';
+        txn.confidence_score  = 0.0;
+        txn.attention_level   = 'HIGH';
+        personIds.add(txn.uncategorized_transaction_id);
+        personRows.push(txn);
+      } else {
+        afterPerson.push(txn);
+      }
+    }
+
+    if (personRows.length > 0) {
+      await flushToDb(personRows);
+      await supabase.from('llm_queue').update({ status: 'done' })
+        .in('uncategorized_transaction_id', [...personIds]).eq('user_id', userId);
+      await supabase.from('uncategorized_transactions').update({ grouping_status: 'categorized' })
+        .in('uncategorized_transaction_id', [...personIds]);
+      logger.info('[PRE-LLM] Person-name filter flushed', { count: personRows.length });
+    }
+
+    // ==========================================
+    // PRE-LLM FILTER 3 — MERCHANT DEDUPLICATION
+    // Multiple rows with the same clean_merchant_name need only ONE LLM call.
+    // Keep one representative per unique name; track siblings separately.
+    // Rows with no clean_merchant_name are always sent individually.
+    // ==========================================
+    const dedupedForLlm    = [];    // representative rows sent to LLM
+    const merchantSiblings = new Map(); // cleanNameUpper -> txn[]
+    const seenMerchants    = new Set();
+
+    for (const txn of afterPerson) {
+      const key = txn.clean_merchant_name ? txn.clean_merchant_name.toUpperCase() : null;
+      if (!key) {
+        // No merchant name — always include individually
+        dedupedForLlm.push(txn);
+        continue;
+      }
+      if (!seenMerchants.has(key)) {
+        seenMerchants.add(key);
+        dedupedForLlm.push(txn);
+        merchantSiblings.set(key, []);
+      } else {
+        merchantSiblings.get(key).push(txn);
+      }
+    }
+
+    const dedupSavings = afterPerson.length - dedupedForLlm.length;
+    if (dedupSavings > 0) {
+      logger.info('[PRE-LLM] Merchant deduplication', {
+        originalCount: afterPerson.length,
+        dedupedCount: dedupedForLlm.length,
+        saved: dedupSavings
+      });
+    }
+
+
+    // ==========================================
+    // STAGE 4: BATCH LLM FALLBACK
+    // Operates on dedupedForLlm (not the raw llmTransactions) so the LLM only
+    // sees one representative per unique merchant name (Fix 3).
+    // ==========================================
+    emit(`Asking AI to categorise ${dedupedForLlm.length} transactions…`, 'llm');
+    logger.info('Stage 4: LLM Batch Fallback', { count: dedupedForLlm.length, original: afterPerson.length });
+
+    // finalResults still tracks ALL pre-LLM rows (including pre-filter rejects)
+    // for the summary log; only dedupedForLlm is sent to the model.
+    const finalResults = [...llmTransactions];
+
+    const debitLeftovers  = dedupedForLlm.filter(t => t.debit);
+    const creditLeftovers = dedupedForLlm.filter(t => t.credit);
 
     logger.info('LLM batch separation', {
       debitCount: debitLeftovers.length,
       creditCount: creditLeftovers.length
     });
 
-    // Helper: mutate finalResults entries with LLM prediction
+    // Helper: mutate finalResults entries with LLM prediction AND fan-out to
+    // merchant-name duplicates (Fix 3 fan-out).
     const applyLlmResult = (prediction) => {
       const repId = prediction.uncategorized_transaction_id || prediction.transaction_id;
       const targets = finalResults.filter(t =>
@@ -360,6 +473,17 @@ async function processUploadSSE(req, res) {
         match.llm_merchant_name = prediction.llm_merchant_name || null;
         match.attention_level   = prediction.confidence_score >= 0.8 ? 'LOW'
           : prediction.confidence_score >= 0.5 ? 'MEDIUM' : 'HIGH';
+
+        // Fix 3: Fan-out result to merchant-name siblings
+        const key = match.clean_merchant_name ? match.clean_merchant_name.toUpperCase() : null;
+        if (key && merchantSiblings.has(key)) {
+          for (const sibling of merchantSiblings.get(key)) {
+            sibling.offset_account_id = match.offset_account_id;
+            sibling.categorised_by    = match.categorised_by;
+            sibling.confidence_score  = match.confidence_score;
+            sibling.attention_level   = match.attention_level;
+          }
+        }
       }
     };
 
@@ -386,8 +510,17 @@ async function processUploadSSE(req, res) {
           applyLlmResult(prediction);
         }
 
-        // ── FLUSH 4: Debit LLM results ─────────────────────────────────────
-        const debitUncatIds = new Set(debitLeftovers.map(t => t.uncategorized_transaction_id));
+        // ── FLUSH 4: Debit LLM results (reps + Fix 3 siblings) ───────────────
+        // Collect the deduped reps AND their merchant siblings
+        const debitRepUncatIds = new Set(debitLeftovers.map(t => t.uncategorized_transaction_id));
+        const debitSiblingRows = debitLeftovers.flatMap(t => {
+          const key = t.clean_merchant_name ? t.clean_merchant_name.toUpperCase() : null;
+          return (key && merchantSiblings.has(key)) ? merchantSiblings.get(key) : [];
+        });
+        const debitUncatIds = new Set([
+          ...debitRepUncatIds,
+          ...debitSiblingRows.map(t => t.uncategorized_transaction_id)
+        ]);
         const debitResolved = finalResults.filter(
           t => debitUncatIds.has(t.uncategorized_transaction_id)
         );
@@ -422,8 +555,17 @@ async function processUploadSSE(req, res) {
           applyLlmResult(prediction);
         }
 
-        // ── FLUSH 5: Credit LLM results ─────────────────────────────────────
-        const creditUncatIds = new Set(creditLeftovers.map(t => t.uncategorized_transaction_id));
+        // ── FLUSH 5: Credit LLM results (reps + Fix 3 siblings) ─────────────
+        // Collect the deduped reps AND their merchant siblings
+        const creditRepUncatIds = new Set(creditLeftovers.map(t => t.uncategorized_transaction_id));
+        const creditSiblingRows = creditLeftovers.flatMap(t => {
+          const key = t.clean_merchant_name ? t.clean_merchant_name.toUpperCase() : null;
+          return (key && merchantSiblings.has(key)) ? merchantSiblings.get(key) : [];
+        });
+        const creditUncatIds = new Set([
+          ...creditRepUncatIds,
+          ...creditSiblingRows.map(t => t.uncategorized_transaction_id)
+        ]);
         const creditResolved = finalResults.filter(
           t => creditUncatIds.has(t.uncategorized_transaction_id)
         );
@@ -432,6 +574,65 @@ async function processUploadSSE(req, res) {
           res.write(`data: ${JSON.stringify({ flush: true, stage: 'llm_credit' })}\n\n`);
           logger.info('Flush 5 (llm_credit) complete', { count: creditResolved.length });
         }
+      }
+    }
+
+    // ── FIX 4: GROUP FAN-OUT ──────────────────────────────────────────────────
+    // After the LLM resolved the group representative(s), find all uncategorized
+    // siblings that share the same group_id + document_id but haven't been
+    // written to transactions yet.  Apply the rep's category with categorised_by
+    // = 'LLM_FANOUT' so it's distinguishable in logs / audits.
+    const llmResolvedReps = dedupedForLlm.filter(t => t.offset_account_id && t.group_id);
+    if (llmResolvedReps.length > 0) {
+      // Collect unique (group_id, document_id) pairs
+      const groupPairs = [...new Map(
+        llmResolvedReps.map(t => [`${t.group_id}__${t.document_id}`, t])
+      ).values()];
+
+      for (const rep of groupPairs) {
+        // Fetch all uncategorized siblings in this group that aren't yet in transactions
+        const { data: siblings } = await supabase
+          .from('uncategorized_transactions')
+          .select('uncategorized_transaction_id, account_id, txn_date, details, debit, credit, document_id, clean_merchant_name')
+          .eq('group_id', rep.group_id)
+          .eq('document_id', rep.document_id)
+          .neq('uncategorized_transaction_id', rep.uncategorized_transaction_id);
+
+        if (!siblings || siblings.length === 0) continue;
+
+        // Exclude any that are already written (by name dedup, garbage, person filters)
+        const unwrittenSiblings = siblings.filter(
+          s => !writtenUncatIds.has(s.uncategorized_transaction_id)
+        );
+
+        if (unwrittenSiblings.length === 0) continue;
+
+        const fanOutRows = unwrittenSiblings.map(s => ({
+          ...s,
+          base_account_id: s.account_id || null,
+          offset_account_id: rep.offset_account_id,
+          categorised_by: 'LLM_FANOUT',
+          confidence_score: rep.confidence_score,
+          attention_level: rep.attention_level || 'HIGH',
+        }));
+
+        await flushToDb(fanOutRows);
+
+        // Mark these siblings in llm_queue as done (they may not be in the queue
+        // because autoPipelineController skips sibling inserts — but guard anyway)
+        const fanOutIds = fanOutRows.map(s => s.uncategorized_transaction_id).filter(Boolean);
+        if (fanOutIds.length > 0) {
+          await supabase.from('llm_queue').update({ status: 'done' })
+            .in('uncategorized_transaction_id', fanOutIds).eq('user_id', userId);
+          await supabase.from('uncategorized_transactions').update({ grouping_status: 'categorized' })
+            .in('uncategorized_transaction_id', fanOutIds);
+        }
+
+        logger.info('[FIX4] Group fan-out applied', {
+          group_id: rep.group_id,
+          repId: rep.uncategorized_transaction_id,
+          siblings: fanOutRows.length
+        });
       }
     }
 

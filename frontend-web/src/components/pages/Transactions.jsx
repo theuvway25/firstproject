@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import AccountPickerModal from '../AccountPickerModal';
 import { Toast, useToast } from '../Toast';
 import { supabase } from '../../shared/supabase';
+import { formatDate } from '../../utils/dateUtils';
 import { ICONS } from '../Icons';
 import '../../styles/Transactions.css';
 
@@ -1983,7 +1984,7 @@ const Transactions = () => {
     return (
       <div
         className={`amount-cell-clickable ${isDebit ? 'debit-cell' : 'credit-cell'}`}
-        title="Click to correct amount or type"
+        title="Tap to edit amount or change transaction type"
         onClick={() => setCorrectingId(txn.uncategorized_transaction_id)}
       >
         {isDebit ? `- ₹${formattedAmount}` : `+ ₹${formattedAmount}`}
@@ -2017,6 +2018,7 @@ const Transactions = () => {
             className="action-btn"
             onClick={() => { setManualAddForm(EMPTY_MANUAL_FORM); setManualAddError(''); setIsManualAddOpen(true); }}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Manually add a transaction that isn't in any uploaded statement"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M12 5v14M5 12h14"/>
@@ -2033,6 +2035,7 @@ const Transactions = () => {
               className="action-btn review-btn"
               onClick={openReview}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Step through each uncategorised transaction one at a time to review and approve"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               Review {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
@@ -2045,6 +2048,7 @@ const Transactions = () => {
               onClick={() => setIsBulkAssignOpen(true)}
               disabled={isBulkAssigning}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              title={`Assign the same category to all ${selectedIds.size} selected transactions at once`}
             >
               {isBulkAssigning ? <span className="spinner-small" style={{ borderColor: 'white', borderTopColor: 'transparent' }} /> : <ICONS.Plus />}
               Assign Account ({selectedIds.size})
@@ -2056,6 +2060,7 @@ const Transactions = () => {
               onClick={handleBulkApprove}
               disabled={selectedIds.size === 0 || isApprovingBulk}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              title={selectedIds.size === 0 ? 'Select transactions above to approve them in bulk' : `Mark all ${selectedIds.size} selected transactions as approved`}
             >
               {isApprovingBulk ? <span className="spinner-small"></span> : <ICONS.Check />}
               {isApprovingBulk ? `Approving ${selectedIds.size}...` : `Approve Selected (${selectedIds.size})`}
@@ -2066,9 +2071,9 @@ const Transactions = () => {
               className={`action-btn ${isCategorizing ? 'categorising' : ''}`}
               onClick={handleCategorize}
               disabled={isCategorizing || processingDocIds.size > 0}
-              title={processingDocIds.size > 0 
-                ? "Wait for background processing to finish" 
-                : "Let AI categorize all remaining uncategorized items"}
+              title={processingDocIds.size > 0
+                ? 'Please wait — your uploaded statements are still being processed'
+                : 'Automatically categorise all uncategorised transactions using AI'}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
               {isCategorizing
@@ -2472,20 +2477,20 @@ const Transactions = () => {
                                   }}
                                 />
                               </div>
-                              <div>{new Date(txn.txn_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+                              <div>{formatDate(txn.txn_date)}</div>
                               <div className="details-cell raw-details" title={txn.details}>{txn.details}</div>
                               <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
                                 {renderAmountCell(txn)}
                               </div>
                               <div className="account-directional-cell">
-                                <span className="account-src" onClick={() => setSrcAccTarget(txn)} title="Click to change base account">
+                                <span className="account-src" onClick={() => setSrcAccTarget(txn)} title="Click to change the source bank or card account for this transaction">
                                   {txn.source_account?.account_name || '-'}
                                 </span>
                                 <span className="account-arrow">→</span>
                                 <span 
                                   className={`account-dest ${txn.transactions[0].accounts ? 'account-cell-clickable' : ''}`}
                                   onClick={() => { if (txn.transactions[0].accounts) setRecatTarget(txn); }}
-                                  title="Click to assign account"
+                                  title="Click to assign a category to this transaction"
                                 >
                                   {accountName}
                                 </span>
@@ -2498,7 +2503,7 @@ const Transactions = () => {
                               </div>
                               
                               <div className="slide-approve-wrapper">
-                                <button className="slide-approve-btn" onClick={() => handleApprove(txn.transactions[0].transaction_id, isUncategorised, txn.uncategorized_transaction_id)} title="Approve">
+                                <button className="slide-approve-btn" onClick={() => handleApprove(txn.transactions[0].transaction_id, isUncategorised, txn.uncategorized_transaction_id)} title="Mark as approved and move to your ledger">
                                   <ICONS.Check />
                                 </button>
                               </div>
@@ -2616,13 +2621,13 @@ const Transactions = () => {
                             }}
                           />
                         </div>
-                        <div>{new Date(txn.txn_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
-                        <div className="details-cell raw-details" title={txn.details}>{txn.details}</div>
+                        <div>{formatDate(txn.txn_date)}</div>
+                        <div className="details-cell raw-details" title={txn.details ? `Full description: ${txn.details}` : ''}>{txn.details}</div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
                           {renderAmountCell(txn)}
                         </div>
                         <div className="account-directional-cell">
-                          <span className="account-src" onClick={() => setSrcAccTarget(txn)} title="Click to change base account">
+                          <span className="account-src" onClick={() => setSrcAccTarget(txn)} title="Click to change the source bank or card account for this transaction">
                             {txn.source_account?.account_name || '-'}
                           </span>
                           <span className="account-arrow">→</span>
@@ -2652,7 +2657,7 @@ const Transactions = () => {
                                   ? 'pointer'
                                   : 'default'
                             }}
-                            title={isRowProcessing(txn) ? 'Auto-categorising…' : isRowFailed(txn) ? 'Pipeline failed — click Retry' : 'Click to assign account'}
+                            title={isRowProcessing(txn) ? 'AI is categorising this transaction — it will update shortly' : isRowFailed(txn) ? 'Categorisation failed — use the Retry button above to try again' : 'Click to assign or change the category for this transaction'}
                           >
                             {isRowProcessing(txn)
                               ? '🔒 Processing…'
@@ -2679,7 +2684,7 @@ const Transactions = () => {
                               className="slide-approve-btn"
                               onClick={() => handleApprove(transactionId, isUncategorised, txn.uncategorized_transaction_id)}
                               disabled={isApproving}
-                              title="Approve"
+                              title="Mark as approved and move to your ledger"
                             >
                               {isApproving ? <span className="spinner-small" style={{ borderColor: 'white', borderTopColor: 'transparent' }}></span> : <ICONS.Check />} 
                             </button>
@@ -2724,7 +2729,7 @@ const Transactions = () => {
                 return (
                   <div key={rowKey} className="similar-txn-row">
                     <div className="similar-txn-date">
-                      {new Date(txn.transaction_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      {formatDate(txn.transaction_date)}
                     </div>
                     <div className="similar-txn-details" title={txn.details}>
                       {txn.details}
@@ -2751,7 +2756,7 @@ const Transactions = () => {
                     </div>
                     <button
                       className="action-icon-btn approve"
-                      title="Approve this one"
+                      title="Approve this transaction individually"
                       onClick={() => handleSimilarIndividualApprove(txn)}
                     >
                       <ICONS.Check />
@@ -2895,7 +2900,7 @@ const Transactions = () => {
                         />
                         <span className={`status-badge ${statusClass}`} style={{ margin: 0 }}>{statusLabel}</span>
                       </div>
-                      <button className="review-close-btn" onClick={closeReview} title="Close (Esc)">✕</button>
+                      <button className="review-close-btn" onClick={closeReview} title="Close review panel (Esc)">✕</button>
                     </div>
                   </div>
 
@@ -3011,7 +3016,7 @@ const Transactions = () => {
                       className="action-btn review-skip-btn"
                       onClick={handleReviewSkip}
                       disabled={reviewApproving}
-                      title="Skip — discard changes (Space)"
+                      title="Skip this transaction and move to the next one (Space)"
                     >
                       Skip
                     </button>
@@ -3019,7 +3024,7 @@ const Transactions = () => {
                       className="action-btn review-save-skip-btn"
                       onClick={handleReviewSaveAndSkip}
                       disabled={reviewApproving}
-                      title="Save changes and come back later"
+                      title="Save your changes to this transaction and come back to it later"
                     >
                       {reviewApproving
                         ? <><span className="spinner-small"></span> Saving…</>
@@ -3030,7 +3035,7 @@ const Transactions = () => {
                       className="action-btn approve-selected has-selection review-approve-btn"
                       onClick={handleReviewApprove}
                       disabled={reviewApproving}
-                      title="Approve &amp; Next (Enter)"
+                      title="Approve this transaction and move to the next one (Enter)"
                     >
                       {reviewApproving
                         ? <><span className="spinner-small"></span> Approving…</>
@@ -3111,7 +3116,7 @@ const Transactions = () => {
                   onChange={e => setManualAddForm(f => ({ ...f, txn_date: e.target.value }))}
                   style={{ padding: '6px 10px', fontSize: '13px', width: 'auto', margin: 0 }}
                 />
-                <button className="review-close-btn" onClick={() => setIsManualAddOpen(false)} title="Close">✕</button>
+                <button className="review-close-btn" onClick={() => setIsManualAddOpen(false)} title="Cancel and close">✕</button>
               </div>
             </div>
 
