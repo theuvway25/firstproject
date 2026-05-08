@@ -79,16 +79,15 @@ const Overview = () => {
     const liabilitiesBreakdownMap = {};
 
     Object.values(globalLedgerMap).forEach(acc => {
-      // Intentionally NOT filtering by selectedAccountId.
-      // Total Assets and Total Liabilities represent the global Balance Sheet.
+      if (selectedAccountId !== 'ALL' && String(acc.account_id) !== String(selectedAccountId)) return;
 
       let balance = 0;
       if (acc.account_type === 'ASSET') {
-        balance = acc.totalCredit - acc.totalDebit;
-      } else if (acc.account_type === 'LIABILITY') {
         balance = acc.totalDebit - acc.totalCredit;
+      } else if (acc.account_type === 'LIABILITY') {
+        balance = Math.abs(acc.totalDebit - acc.totalCredit);
       } else {
-        balance = acc.totalCredit - acc.totalDebit;
+        balance = Math.abs(acc.totalCredit - acc.totalDebit);
       }
 
       if (acc.account_type === 'ASSET') {

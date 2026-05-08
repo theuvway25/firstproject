@@ -109,7 +109,7 @@ const Analytics = () => {
         .from('accounts')
         .select('account_id, account_name')
         .eq('user_id', user.id)
-        .eq('account_type', 'ASSET');
+        .in('account_type', ['ASSET', 'LIABILITY']);
       if (data) setBankAccounts(data);
     };
     fetchAccounts();
@@ -232,10 +232,19 @@ const Analytics = () => {
           if (nameLower.includes('uncategor') || nameLower.includes('unclassifi')) return;
 
           const amt = txn.amount || 0;
-          const type = txn.offset_account.account_type;
+          let type = txn.offset_account.account_type;
           const rootParent = getRootParentName(txn.offset_account.account_id) || accountName;
           
           if (rootParent.toLowerCase().includes('uncategor') || rootParent.toLowerCase().includes('unclassifi')) return;
+
+          const baseAccount = acctMap[txn.base_account_id];
+          if (baseAccount && baseAccount.account_type === 'ASSET') {
+             if (txn.transaction_type === 'CREDIT') {
+                 type = 'INCOME';
+             } else if (txn.transaction_type === 'DEBIT') {
+                 type = 'EXPENSE';
+             }
+          }
 
           const formattedTxn = {
              uncategorized_transaction_id: txn.transaction_id,
@@ -251,6 +260,14 @@ const Analytics = () => {
             incomeGroups[rootParent][accountName].amount += amt;
             incomeGroups[rootParent][accountName].txns.push(formattedTxn);
           } else if (type === 'EXPENSE') {
+            // Skip CC payments — these are liability transfers, not real expenses
+            const rootParentLower = rootParent.toLowerCase();
+            if (
+              rootParentLower.includes('credit card payment') ||
+              rootParentLower.includes('cc payment') ||
+              rootParentLower.includes('card payment')
+            ) return;
+
             const isCogs = COGS_KEYWORDS.some(kw => rootParent.toLowerCase().includes(kw));
             if (isCogs) {
               if (!cogsGroup[accountName]) cogsGroup[accountName] = { amount: 0, txns: [] };
@@ -827,7 +844,9 @@ const Analytics = () => {
           <div className="pl-row pl-row-net" style={{ marginTop: '15px' }}>
             <div className="pl-col-account"><strong>Net Profit/Loss</strong></div>
             <div className={`pl-col-total pl-net-value ${netPL >= 0 ? 'pl-positive' : 'pl-negative'}`}>
-              <strong>{formatPLAmount(netPL)}</strong>
+              <strong>
+                {netPL < 0 ? '-' : ''}₹{Math.abs(netPL).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </strong>
             </div>
           </div>
         </div>
