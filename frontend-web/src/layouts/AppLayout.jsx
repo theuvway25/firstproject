@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Settings from '../components/pages/Settings';
@@ -20,6 +20,13 @@ const AppLayout = ({ user, toggleTheme, isDarkMode }) => {
     }
   };
 
+  // Listen for logout requests dispatched from the Settings modal
+  useEffect(() => {
+    const handler = () => handleLogout();
+    window.addEventListener('ledgerai:logout', handler);
+    return () => window.removeEventListener('ledgerai:logout', handler);
+  }, []);
+
   return (
     <div className="dashboard-shell">
       <Sidebar
@@ -40,7 +47,11 @@ const AppLayout = ({ user, toggleTheme, isDarkMode }) => {
       </div>
 
       {isSettingsOpen && (
-        <Settings onClose={() => setIsSettingsOpen(false)} />   // ← now reachable
+        <Settings
+          onClose={() => setIsSettingsOpen(false)}
+          toggleTheme={toggleTheme}
+          isDarkMode={isDarkMode}
+        />
       )}
 
       {/* LedgerBuddy AI Assistant */}

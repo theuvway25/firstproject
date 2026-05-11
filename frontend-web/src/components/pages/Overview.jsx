@@ -31,9 +31,8 @@ const Overview = () => {
       const enriched = Object.values(globalLedgerMap)
         .filter(acc => acc.account_type === 'LIABILITY')
         .map(acc => {
-          // In bank-perspective statements, Credit Card spending is Debit, payment is Credit.
-          // Therefore, Liability balance = totalDebit - totalCredit
-          const balance = acc.totalDebit - acc.totalCredit;
+          // Proper accounting perspective: Liability balance = totalCredit - totalDebit
+          const balance = acc.totalCredit - acc.totalDebit;
           // Determine subtype tag based on account name
           const tag = acc.account_name.toLowerCase().includes('card') ? 'Credit Card' : 'Liability';
           return { name: acc.account_name, amount: balance, tag };
@@ -46,9 +45,8 @@ const Overview = () => {
       const perAccount = Object.values(globalLedgerMap)
         .filter(acc => acc.account_type === 'ASSET')
         .map(acc => {
-          // In bank-perspective statements, Bank Account income is Credit, expense is Debit.
-          // Therefore, Asset balance = totalCredit - totalDebit
-          const balance = acc.totalCredit - acc.totalDebit;
+          // Proper accounting perspective: Asset balance = totalDebit - totalCredit
+          const balance = acc.totalDebit - acc.totalCredit;
           return { name: acc.account_name, amount: balance };
         })
         .sort((a, b) => b.amount - a.amount);
@@ -85,9 +83,9 @@ const Overview = () => {
       if (acc.account_type === 'ASSET') {
         balance = acc.totalDebit - acc.totalCredit;
       } else if (acc.account_type === 'LIABILITY') {
-        balance = Math.abs(acc.totalDebit - acc.totalCredit);
+        balance = acc.totalCredit - acc.totalDebit;
       } else {
-        balance = Math.abs(acc.totalCredit - acc.totalDebit);
+        balance = acc.totalCredit - acc.totalDebit;
       }
 
       if (acc.account_type === 'ASSET') {
@@ -155,10 +153,10 @@ const Overview = () => {
       });
       setAccounts(Object.keys(accsMap).map(id => ({ id, name: accsMap[id] })));
 
-      // ── 2. Fetch ledger_entries for Assets & Liabilities ─────────────────────────────
+      // ── 2. Fetch journal_entries for Assets & Liabilities ─────────────────────────────
       // Cumulative fetch (no .gte filter) to get the actual account balances.
       const { data: ledgerEntries } = await supabase
-        .from('ledger_entries')
+        .from('journal_entries')
         .select(`
           debit_amount,
           credit_amount,

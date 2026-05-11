@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useHeartbeat } from './hooks/useHeartbeat';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './shared/hooks/useAuth';
 import { useRole } from './context/RoleContext';
 import { supabase, supabaseConfigError } from './shared/supabase';
@@ -54,6 +54,73 @@ const ModuleGuard = ({ hasModules, hasIdentifiers, checkSetupStatus, user, toggl
     return <SetupAccounts onSetupAccountsComplete={checkSetupStatus} />;
   }
   return <AppLayout user={user} toggleTheme={toggleTheme} isDarkMode={isDarkMode} />;
+};
+
+// ── 404 Not Found screen ──────────────────────────────────────────────────
+const NotFound = () => {
+  const navigate = useNavigate();
+  return (
+    <div style={{
+      height: '100vh',
+      display: 'grid',
+      placeItems: 'center',
+      backgroundColor: 'var(--bg-primary)',
+      color: 'var(--text-primary)',
+      fontFamily: "'Outfit', sans-serif",
+    }}>
+      <style>{`
+        @keyframes notFoundFade {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+      <div style={{ textAlign: 'center', animation: 'notFoundFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
+        <div style={{
+          fontSize: 'clamp(80px, 15vw, 140px)',
+          fontWeight: 800,
+          lineHeight: 1,
+          background: 'var(--accent-gradient)',
+          WebkitBackgroundClip: 'text',
+          backgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          marginBottom: '16px',
+        }}>404</div>
+        <p style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 8px', color: 'var(--text-primary)' }}>
+          Page not found
+        </p>
+        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 32px' }}>
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <button
+          id="not-found-go-home"
+          onClick={() => navigate('/')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '12px 24px',
+            borderRadius: '12px',
+            border: '1px solid var(--glass-border)',
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-primary)',
+            fontFamily: 'inherit',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'var(--accent-color)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'var(--glass-border)';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+        >
+          ← Go home
+        </button>
+      </div>
+    </div>
+  );
 };
 
 function App() {
@@ -207,7 +274,7 @@ function App() {
              <Route path="review" element={<ReviewPage />} />
         </Route>
 
-        <Route path="*" element={<div style={{ padding: '20px', color: 'white' }}>404 - Not Found ({window.location.pathname})</div>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
 
       {/* Chatbot - Hidden during setup/welcome screens */}

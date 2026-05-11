@@ -45,7 +45,7 @@ router.post('/manual-add', authMiddleware, manualAddTransaction);
 
 // 🛡️ Route: PATCH /:uncategorized_transaction_id/correct
 // Corrects the amount and/or type of a parsed transaction.
-// Deletes ledger_entries + transactions, resets uncategorized_transaction to PENDING.
+// Deletes journal_entries + transactions, resets uncategorized_transaction to PENDING.
 // Body: { amount?: number, transaction_type?: 'DEBIT' | 'CREDIT' }
 router.patch('/:uncategorized_transaction_id/correct', authMiddleware, correctTransaction);
 // 🛡️ Route: PATCH /:uncategorized_transaction_id/source-account

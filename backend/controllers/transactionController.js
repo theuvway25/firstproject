@@ -4,7 +4,7 @@ const rulesEngineService = require('../services/rulesEngineService');
 
 /**
  * Helper to build ledger entries for an approved transaction.
- * Returns an array of objects to be inserted into 'ledger_entries'.
+ * Returns an array of objects to be inserted into 'journal_entries'.
  */
 function buildLedgerRows(txn, userId) {
   const { transaction_id, base_account_id, offset_account_id, amount, transaction_type, transaction_date, is_contra } = txn;
@@ -64,7 +64,7 @@ async function createLedgerEntries(transactionId, baseAccountId, offsetAccountId
 
   if (rows.length === 0) return;
 
-  const { error } = await supabase.from('ledger_entries').insert(rows);
+  const { error } = await supabase.from('journal_entries').insert(rows);
   if (error) {
     if (error.code === '23505') {
       // Unique constraint violation — already processed, safe to ignore
@@ -553,7 +553,7 @@ async function bulkApproveTransactions(req, res) {
 
           // Insert ALL ledger rows in a single supabase call
           if (allLedgerRows.length > 0) {
-            const { error: ledgerError } = await supabase.from('ledger_entries').insert(allLedgerRows);
+            const { error: ledgerError } = await supabase.from('journal_entries').insert(allLedgerRows);
             if (ledgerError) console.error('Background bulk ledger insert failed:', ledgerError);
           }
 
@@ -692,7 +692,7 @@ async function bulkAssignAndApproveTransactions(req, res) {
           }
 
           if (allLedgerRows.length > 0) {
-            const { error: ledgerError } = await supabase.from('ledger_entries').insert(allLedgerRows);
+            const { error: ledgerError } = await supabase.from('journal_entries').insert(allLedgerRows);
             if (ledgerError) console.error('Background bulk ledger insert failed:', ledgerError);
           }
 
@@ -726,8 +726,10 @@ async function bulkAssignAndApproveTransactions(req, res) {
  */
 async function manualCategorizeTransaction(req, res) {
   try {
-    const { uncategorized_transaction_id, offset_account_id } = req.body;
+    const { uncategorized_transaction_id, offset_account_id, pending } = req.body;
     const userId = req.user?.id;
+    // pending=true  → Save path: creates a PENDING/DRAFT row (no ledger, no cache)
+    // pending=false → Approve path: creates an APPROVED/POSTED row (original behaviour)
 
     if (!userId) {
       return res.status(401).json({ error: 'User authentication failed.' });
@@ -764,9 +766,10 @@ async function manualCategorizeTransaction(req, res) {
         transaction_type: uncatData.debit > 0 ? 'DEBIT' : 'CREDIT',
         categorised_by: 'MANUAL',
         confidence_score: 1.00,
-        posting_status: 'POSTED',
-        review_status: 'APPROVED',
+        posting_status: pending ? 'DRAFT'  : 'POSTED',
+        review_status:  pending ? 'PENDING': 'APPROVED',
         attention_level: 'LOW',
+        is_uncategorised: false,
         uncategorized_transaction_id: uncategorized_transaction_id
       }]);
 
@@ -791,7 +794,9 @@ async function manualCategorizeTransaction(req, res) {
     let similarTransactions = [];
     let suggestedAccount = null;
 
-    if (newTxn) {
+    // For the pending/Save path we skip ledger creation, cache seeding and
+    // similar-transaction matching — those run when the row is eventually approved.
+    if (!pending && newTxn) {
       await createLedgerEntries(
         newTxn.transaction_id,
         newTxn.base_account_id,
@@ -964,6 +969,8 @@ async function manualCategorizeTransaction(req, res) {
 
     return res.status(200).json({
       success: true,
+      transaction_id: newTxn?.transaction_id ?? null,
+      pending: !!pending,
       similarTransactions,
       suggestedAccount
     });
@@ -979,7 +986,7 @@ async function manualCategorizeTransaction(req, res) {
  *
  * Strategy: Clean Slate
  *   1. Guard against POSTED and contra transactions.
- *   2. Delete ledger_entries (FK must go first).
+ *   2. Delete journal_entries (FK must go first).
  *   3. Delete the transactions row.
  *   4. Update uncategorized_transactions with corrected values and reset to PENDING.
  *
@@ -1044,9 +1051,9 @@ async function correctTransaction(req, res) {
         });
       }
 
-      // ── 2. Delete ledger_entries first (FK constraint) ──────────────────────
+      // ── 2. Delete journal_entries first (FK constraint) ──────────────────────
       const { error: ledgerDeleteError } = await supabase
-        .from('ledger_entries')
+        .from('journal_entries')
         .delete()
         .eq('transaction_id', existingTxn.transaction_id);
 
@@ -1422,7 +1429,7 @@ async function retryPipeline(req, res) {
       const draftUncatIds = draftTxns.map(t => t.uncategorized_transaction_id).filter(Boolean);
 
       // Delete ledger entries first (FK constraint), then the transactions rows.
-      await supabase.from('ledger_entries').delete().in('transaction_id', draftTxnIds);
+      await supabase.from('journal_entries').delete().in('transaction_id', draftTxnIds);
       await supabase.from('transactions').delete().in('transaction_id', draftTxnIds);
 
       // Reset the corresponding uncategorized_transactions back to 'done' so

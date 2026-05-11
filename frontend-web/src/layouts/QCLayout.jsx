@@ -16,7 +16,7 @@ const QCLayout = ({ user, toggleTheme, isDarkMode }) => {
   };
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#0B1220' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)' }}>
        <div style={{ flexGrow: 1, overflow: 'hidden' }}>
           <Outlet context={{ handleLogout, user, toggleTheme, isDarkMode }} />
        </div>

@@ -1155,7 +1155,8 @@ body.light-mode .table-row.uniform-layout:hover {
 
 /* ── Review Footer ─────────────────────────────────────────────── */
 .review-footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1.4fr;
   gap: 12px;
   padding: 16px 24px;
   border-top: 1px solid var(--glass-border);
@@ -1163,13 +1164,11 @@ body.light-mode .table-row.uniform-layout:hover {
 }
 
 .review-skip-btn {
-  flex: 0 0 auto;
   min-width: 80px;
   justify-content: center;
 }
 
 .review-save-skip-btn {
-  flex: 0 0 auto;
   min-width: 100px;
   justify-content: center;
   background: rgba(245, 158, 11, 0.1);
@@ -1190,8 +1189,8 @@ body.light-mode .table-row.uniform-layout:hover {
 }
 
 .review-approve-btn {
-  flex: 1;
   justify-content: center;
+  color: white;
 }
 
 /* ── Completion screen ─────────────────────────────────────────── */

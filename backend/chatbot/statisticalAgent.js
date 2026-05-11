@@ -5,7 +5,7 @@
  * ║  ACCURACY CONTRACT  (must mirror Overview.jsx exactly)             ║
  * ║  Income  = CREDIT transactions on INCOME-type accounts             ║
  * ║  Expense = DEBIT  transactions on EXPENSE-type accounts            ║
- * ║  Assets / Liabilities = ledger_entries cumulative balances         ║
+ * ║  Assets / Liabilities = journal_entries cumulative balances         ║
  * ║  Reversals (debit on INCOME / credit on EXPENSE) → excluded        ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
@@ -191,7 +191,7 @@ async function computePnL(userId, from, to) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// CORE: computeBalanceSheet — Assets & Liabilities from ledger_entries
+// CORE: computeBalanceSheet — Assets & Liabilities from journal_entries
 // ════════════════════════════════════════════════════════════════════════
 
 const formatDate = (dateStringOrDate) => {
@@ -229,7 +229,7 @@ const formatMonthYear = (dateStringOrDate) => {
 
 async function computeBalanceSheet(userId) {
   const { data: entries, error } = await supabase
-    .from('ledger_entries')
+    .from('journal_entries')
     .select('debit_amount,credit_amount,account:account_id(account_id,account_name,account_type,balance_nature)')
     .eq('user_id', userId);
   if (error) throw error;
@@ -350,7 +350,7 @@ async function hBankSummary(userId) {
   const ids=accs.map(a=>a.account_id);
   const [{ data:idents },{ data:ledger }] = await Promise.all([
     supabase.from('account_identifiers').select('account_id,institution_name,account_number_last4,card_last4').eq('user_id',userId).in('account_id',ids),
-    supabase.from('ledger_entries').select('account_id,debit_amount,credit_amount').eq('user_id',userId).in('account_id',ids),
+    supabase.from('journal_entries').select('account_id,debit_amount,credit_amount').eq('user_id',userId).in('account_id',ids),
   ]);
 
   const imap={},lmap={};

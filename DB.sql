@@ -186,8 +186,8 @@ CREATE TABLE public.global_vector_cache (
   CONSTRAINT global_vector_cache_pkey PRIMARY KEY (cache_id),
   CONSTRAINT global_vector_cache_target_template_id_fkey FOREIGN KEY (target_template_id) REFERENCES public.coa_templates(template_id)
 );
-CREATE TABLE public.ledger_entries (
-  ledger_entry_id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+CREATE TABLE public.journal_entries (
+  journal_entry_id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   transaction_id bigint NOT NULL,
   account_id bigint NOT NULL,
   debit_amount numeric NOT NULL DEFAULT 0.00,
@@ -195,10 +195,10 @@ CREATE TABLE public.ledger_entries (
   entry_date date NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   user_id uuid NOT NULL,
-  CONSTRAINT ledger_entries_pkey PRIMARY KEY (ledger_entry_id),
-  CONSTRAINT ledger_entries_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(transaction_id),
-  CONSTRAINT ledger_entries_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(account_id),
-  CONSTRAINT ledger_entries_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT journal_entries_pkey PRIMARY KEY (journal_entry_id),
+  CONSTRAINT journal_entries_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(transaction_id),
+  CONSTRAINT journal_entries_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(account_id),
+  CONSTRAINT journal_entries_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.llm_queue (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

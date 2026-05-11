@@ -370,7 +370,7 @@ const Analytics = () => {
       } else if (view === 'balance') {
         // Fetch Balance Sheet data
         let bsQuery = supabase
-          .from('ledger_entries')
+          .from('journal_entries')
           .select(`
             debit_amount,
             credit_amount,
@@ -440,9 +440,9 @@ const Analytics = () => {
         const accounts = Object.values(accountMap).map(acc => {
           let balance = 0;
           if (acc.account_type === 'ASSET') {
-            balance = acc.totalCredit - acc.totalDebit;
-          } else if (acc.account_type === 'LIABILITY') {
             balance = acc.totalDebit - acc.totalCredit;
+          } else if (acc.account_type === 'LIABILITY') {
+            balance = acc.totalCredit - acc.totalDebit;
           } else {
              // Equity
             balance = acc.totalCredit - acc.totalDebit;
@@ -487,9 +487,9 @@ const Analytics = () => {
       } else {
         // Fetch Ledger data
         const { data, error } = await supabase
-          .from('ledger_entries')
+          .from('journal_entries')
           .select(`
-            ledger_entry_id,
+            journal_entry_id,
             debit_amount,
             credit_amount,
             entry_date,
@@ -1147,7 +1147,7 @@ const Analytics = () => {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `General_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `Journal_Entries_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1156,7 +1156,7 @@ const Analytics = () => {
     const exportLedgerToPDF = () => {
       const doc = new jsPDF();
       doc.setFontSize(20);
-      doc.text("General Ledger", 14, 22);
+      doc.text("Journal Entries", 14, 22);
       
       const tableRows = [];
       ledgerData.forEach(entry => {
@@ -1178,7 +1178,7 @@ const Analytics = () => {
         styles: { fontSize: 8 },
       });
 
-      doc.save(`General_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`Journal_Entries_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (
@@ -1200,7 +1200,7 @@ const Analytics = () => {
               <div className="export-menu">
                 <button className="export-menu-item" onClick={() => { exportLedgerToPDF(); setShowLedgerDownload(false); }}>
                   <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                  PDF Ledger
+                  PDF Journal
                 </button>
                 <button className="export-menu-item" onClick={() => { exportLedgerToCSV(); setShowLedgerDownload(false); }}>
                   <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -1246,7 +1246,7 @@ const Analytics = () => {
                 const badge    = acctTypeColor(accType);
 
                 return (
-                  <div key={entry.ledger_entry_id} style={{
+                  <div key={entry.journal_entry_id} style={{
                     display: 'grid',
                     gridTemplateColumns: '110px 1fr 160px 120px 120px',
                     padding: '11px 16px',
@@ -1336,7 +1336,7 @@ const Analytics = () => {
           <button
             className={`filter-tab ${view === 'ledger' ? 'active' : ''}`}
             onClick={() => setView('ledger')}
-          >Ledger</button>
+          >Journal Entries</button>
         </div>
       </div>
 

@@ -22,7 +22,7 @@ const TOUR_STEPS = [
   {
     path: '/',
     title: 'Pulse of your Business',
-    content: 'Track Income, Expenses, and your current Ledger Balance at a glance.',
+    content: 'Track Income, Expenses, and your current Journal Balance at a glance.',
     selector: '#overview-summary-cards',
     position: 'bottom'
   },
@@ -103,7 +103,7 @@ const TOUR_STEPS = [
   },
   {
     path: '/review',
-    title: 'Post to Ledger',
+    title: 'Post to Journal',
     content: 'Once you are satisfied with the data, hit Approve to officially post these transactions into your accounts.',
     selector: '#review-header-actions',
     position: 'bottom'
@@ -112,7 +112,7 @@ const TOUR_STEPS = [
   // --- TRANSACTIONS PAGE ---
   {
     path: '/transactions',
-    title: 'The Ledger',
+    title: 'The Journal',
     content: 'This master ledger consolidates every transaction into a single, searchable view.',
     selector: '#transactions-title',
     position: 'bottom'

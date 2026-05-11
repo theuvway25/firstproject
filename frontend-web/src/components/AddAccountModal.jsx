@@ -174,8 +174,24 @@ const AddAccountModal = ({ onClose, onCreated }) => {
             </select>
           </div>
 
-          {/* ── AI Categorisation Toggle ── */}
-          <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 10 }}>
+          {/* ── AI Categorisation Checkbox ── */}
+          <label
+            htmlFor="add-account-include-in-llm"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+              background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)',
+              borderRadius: 10, cursor: loading ? 'not-allowed' : 'pointer', userSelect: 'none'
+            }}
+            title={form.include_in_llm ? 'AI will suggest this account — click to exclude it' : 'AI will not suggest this account — click to include it'}
+          >
+            <input
+              type="checkbox"
+              id="add-account-include-in-llm"
+              checked={form.include_in_llm}
+              onChange={() => setForm(p => ({ ...p, include_in_llm: !p.include_in_llm }))}
+              disabled={loading}
+              style={{ width: 16, height: 16, accentColor: 'var(--primary, #6366f1)', cursor: loading ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+            />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>🤖</span> Include in AI Categorisation
@@ -184,25 +200,7 @@ const AddAccountModal = ({ onClose, onCreated }) => {
                 When enabled, AI will suggest this account as a category when you're reviewing transactions
               </div>
             </div>
-            <button
-              type="button"
-              id="add-account-include-in-llm-toggle"
-              onClick={() => setForm(p => ({ ...p, include_in_llm: !p.include_in_llm }))}
-              title={form.include_in_llm ? 'AI will suggest this account — click to exclude it' : 'AI will not suggest this account — click to include it'}
-              disabled={loading}
-              style={{
-                flexShrink: 0, width: 44, height: 24, borderRadius: 12, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-                background: form.include_in_llm ? 'var(--primary, #6366f1)' : 'rgba(120,120,140,0.35)',
-                position: 'relative', transition: 'background 0.2s', outline: 'none'
-              }}
-            >
-              <span style={{
-                position: 'absolute', top: 3, left: form.include_in_llm ? 23 : 3,
-                width: 18, height: 18, borderRadius: '50%', background: '#fff',
-                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)'
-              }} />
-            </button>
-          </div>
+          </label>
 
           {showIdentifierFields && (
             <>

@@ -178,7 +178,7 @@ async function findAndLinkContras(transactionsBatch, userId, supabaseClient) {
                         // Those entries recorded a real income/expense — wrong for a contra.
                         // Delete them first so the books stay clean.
                         const { error: ledgerDeleteError } = await supabaseClient
-                            .from('ledger_entries')
+                            .from('journal_entries')
                             .delete()
                             .eq('transaction_id', dbMatch[0].transaction_id);
 
