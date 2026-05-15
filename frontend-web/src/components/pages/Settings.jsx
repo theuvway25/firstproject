@@ -17,19 +17,44 @@ const Settings = ({ toggleTheme, isDarkMode }) => {
       </div>
 
       <div className="settings-content">
-        {/* ── Profile ── */}
+        {/* ── Account Information ── */}
         <div className="settings-card">
           <div className="card-header">
-            <span className="card-icon">👤</span>
-            <h2>Profile</h2>
+            <h2>Account Informations</h2>
           </div>
           <div className="card-body">
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
-              <div className="static-field">
-                {email}
-                <span className="lock-badge">System Locked</span>
+            <div className="settings-row">
+              <div className="row-info">
+                <h3>Email address</h3>
               </div>
+              <div className="static-value-text">{email}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Security Settings ── */}
+        <div className="settings-card">
+          <div className="card-header">
+            <h2>Security Settings</h2>
+          </div>
+          <div className="card-body">
+            <div className="settings-row">
+              <div className="row-info">
+                <h3>Google Authenticator (2FA)</h3>
+                <p>Use the Authenticator to get verification codes for better security.</p>
+              </div>
+              <label className="switch">
+                <input type="checkbox" defaultChecked />
+                <span className="slider round"></span>
+              </label>
+            </div>
+            
+            <div className="settings-row" style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--glass-border)' }}>
+              <div className="row-info">
+                <h3>Password</h3>
+                <p>Last Changed {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+              </div>
+              <button className="theme-toggle-btn">Set password</button>
             </div>
           </div>
         </div>
@@ -37,7 +62,6 @@ const Settings = ({ toggleTheme, isDarkMode }) => {
         {/* ── Appearance ── */}
         <div className="settings-card">
           <div className="card-header">
-            <span className="card-icon">🎨</span>
             <h2>Appearance</h2>
           </div>
           <div className="card-body">
@@ -60,7 +84,6 @@ const Settings = ({ toggleTheme, isDarkMode }) => {
         {/* ── Account ── */}
         <div className="settings-card">
           <div className="card-header">
-            <span className="card-icon">🔐</span>
             <h2>Account</h2>
           </div>
           <div className="card-body">

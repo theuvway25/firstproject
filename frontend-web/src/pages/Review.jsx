@@ -578,6 +578,7 @@ export default function ReviewPage() {
                     onClick={() => !isApproved && setActiveParser(parserType)}
                     style={{
                         padding: '0.75rem 1rem',
+                        paddingRight: '48px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',

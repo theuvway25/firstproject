@@ -38,14 +38,13 @@
   border-radius: 20px;
   border: 1px solid var(--glass-border);
   margin-bottom: 32px;
-  box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.05);
 }
 
 .avatar-wrapper.compact {
   position: relative;
   width: 90px;
   height: 90px;
-  cursor: pointer;
+  cursor: default;
 }
 
 .avatar-wrapper.compact .profile-avatar-large {
@@ -73,22 +72,7 @@
   color: #6b7280;
 }
 
-.avatar-wrapper.compact .avatar-overlay {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 28px;
-  height: 28px;
-  background: #064e3b; /* Dark green like image 1 */
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  border: 2px solid white;
-  z-index: 2;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+
 
 .profile-hero-info .hero-name {
   font-size: 24px;
@@ -121,7 +105,6 @@
   background: var(--bg-secondary);
   border-radius: 20px;
   border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.05);
 }
 
 .card-header {
@@ -273,8 +256,11 @@
 }
 
 .group-label {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 800;
+  color: #1e293b;
 }
 
 .tree-children {
@@ -317,3 +303,5 @@
   align-items: center;
   justify-content: center;
 }
+
+

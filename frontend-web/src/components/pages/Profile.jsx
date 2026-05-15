@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../shared/supabase';
 import { ICONS } from '../Icons';
 import '../../styles/Profile.css';
@@ -7,8 +7,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState({ banks: true, cards: true, wallets: true });
-  const fileInputRef = useRef(null);
+  const [expandedGroups, setExpandedGroups] = useState({ banks: false, cards: false, wallets: false });
   
   const [profileData, setProfileData] = useState({
     firstName: '',
@@ -85,46 +84,6 @@ const Profile = () => {
     }
   };
 
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setSaving(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { avatar_url: publicUrl }
-      });
-
-      if (updateError) throw updateError;
-
-      setProfileData(prev => ({ ...prev, avatarUrl: publicUrl }));
-    } catch (err) {
-      console.error('Error uploading avatar:', err);
-      alert('Failed to upload profile picture.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleSaveInfo = async () => {
     try {
       setSaving(true);
@@ -179,7 +138,7 @@ const Profile = () => {
       </div>
 
       <div className="profile-header-compact">
-        <div className="avatar-wrapper compact" onClick={handleAvatarClick}>
+        <div className="avatar-wrapper compact readonly">
           <div className="profile-avatar-large">
             {profileData.avatarUrl ? (
               <img src={profileData.avatarUrl} alt="Profile" />
@@ -187,10 +146,6 @@ const Profile = () => {
               <span className="avatar-initials">{getInitials()}</span>
             )}
           </div>
-          <div className="avatar-overlay">
-            <ICONS.Camera style={{ width: 14, height: 14 }} />
-          </div>
-          <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*" />
         </div>
         <div className="profile-hero-info">
           <h1 className="hero-name">{profileData.firstName} {profileData.lastName}</h1>
