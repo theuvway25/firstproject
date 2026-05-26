@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../shared/supabase';
 import AddAccountModal from '../AddAccountModal';
@@ -183,11 +184,112 @@ const EditIdentifierModal = ({ account, onClose, onSuccess }) => {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Account Actions Menu (⋯ popover)
+// ─────────────────────────────────────────────────────────────────────────────
+const AccountActionsMenu = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleLlm }) => {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const menuRef = React.useRef(null);
+  const popupRef = React.useRef(null);
+
+  const toggleOpen = (e) => {
+    e.stopPropagation();
+    if (!open && menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + window.scrollY + 6,
+        left: rect.right + window.scrollX - 160
+      });
+    }
+    setOpen(!open);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      if (popupRef.current && popupRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const scrollHandler = () => setOpen(false);
+
+    document.addEventListener('mousedown', handler);
+    window.addEventListener('scroll', scrollHandler, true); // Close on any scroll
+
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', scrollHandler, true);
+    };
+  }, [open]);
+
+  return (
+    <div className="acct-menu-wrap" ref={menuRef}>
+      <button
+        className="node-action-btn acct-more-btn"
+        onClick={toggleOpen}
+        title="More actions"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+        </svg>
+      </button>
+
+      {open && createPortal(
+        <div className="acct-menu-popup" ref={popupRef} style={{ top: coords.top, left: coords.left, position: 'absolute' }} onClick={e => e.stopPropagation()}>
+          {!node.is_system_generated && (
+            <>
+              <button className="acct-menu-item" onClick={() => { onRename(); setOpen(false); }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Rename
+              </button>
+
+              {node.identifier && (
+                <button className="acct-menu-item" onClick={() => { onEditIdentifier(); setOpen(false); }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                  </svg>
+                  Edit Identifier
+                </button>
+              )}
+            </>
+          )}
+
+          <button className="acct-menu-item" onClick={() => { onToggleLlm(); setOpen(false); }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            {node.include_in_llm ? 'Exclude from AI' : 'Include in AI'}
+          </button>
+
+          {node.is_system_generated ? (
+            <div className="acct-menu-item acct-menu-locked">
+              🔒 System account
+            </div>
+          ) : (
+            <button className="acct-menu-item acct-menu-danger" onClick={() => { onDeactivate(); setOpen(false); }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+              </svg>
+              Remove
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Account Node
 // ─────────────────────────────────────────────────────────────────────────────
-const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleLlm, renamingId, setRenamingId, renameValue, setRenameValue, savingId, onViewTransactions }) => {
+const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleLlm, renamingId, setRenamingId, renameValue, setRenameValue, savingId, onViewTransactions, level = 0 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const isRenaming = renamingId === node.account_id;
 
@@ -198,135 +300,82 @@ const AccountNode = ({ node, onRename, onDeactivate, onEditIdentifier, onToggleL
     : null;
 
   return (
-    <div className={`account-node ${hasChildren ? 'has-kids' : 'leaf'}`}
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-      <div className="node-header" onClick={() => hasChildren && !isRenaming && setIsOpen(!isOpen)}>
-        {hasChildren && <span className="toggle-icon">{isOpen ? '▼' : '▶'}</span>}
+    <>
+      <div 
+        className="accounts-row"
+        style={{ paddingLeft: `${24 + (level * 16)}px` }}
+      >
+        <div className="accounts-col-account" style={{ cursor: hasChildren && !isRenaming ? 'pointer' : 'default' }} onClick={() => hasChildren && !isRenaming && setIsOpen(!isOpen)}>
+          {hasChildren ? (
+            <span className="toggle-icon">{isOpen ? '▼' : '▶'}</span>
+          ) : (
+            <span style={{ width: '14px', display: 'inline-block' }}></span>
+          )}
 
-        {isRenaming ? (
-          <input className="rename-input" value={renameValue}
-            onChange={e => setRenameValue(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') onRename(node.account_id, renameValue);
-              if (e.key === 'Escape') { setRenamingId(null); setRenameValue(''); }
-            }}
-            onClick={e => e.stopPropagation()} autoFocus />
-        ) : (
-          <span className="node-name">{node.account_name}</span>
-        )}
+          {isRenaming ? (
+            <input className="rename-input" value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onRename(node.account_id, renameValue);
+                if (e.key === 'Escape') { setRenamingId(null); setRenameValue(''); }
+              }}
+              onClick={e => e.stopPropagation()} autoFocus />
+          ) : (
+            <span className="node-name" style={{ fontWeight: hasChildren ? 600 : 400, color: hasChildren ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{node.account_name}</span>
+          )}
 
-        {!isRenaming && identifierLabel && (
-          <span className="node-identifier">{identifierLabel}</span>
-        )}
+          {!isRenaming && identifierLabel && (
+            <span className="node-identifier">{identifierLabel}</span>
+          )}
+        </div>
 
-        {hovered && !isRenaming && !node.is_system_generated && (
-          <div className="node-actions">
-            {/* View transactions for this account */}
-            <button
-              className="node-action-btn"
-              style={{ color: 'var(--primary-action, #7c6ff7)', opacity: 0.85 }}
-              onClick={e => { e.stopPropagation(); onViewTransactions(node.account_id); }}
-              title="View all transactions linked to this account"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-              </svg>
-            </button>
-            {node.identifier && (
-              <button className="node-action-btn identifier"
-                onClick={e => { e.stopPropagation(); onEditIdentifier(node); }}
-                title="Update the bank or card number linked to this account">
+        <div className="accounts-col-actions">
+          {isRenaming ? (
+            <div className="node-actions" style={{ margin: 0, opacity: 1 }}>
+              <button className="node-action-btn save"
+                onClick={e => { e.stopPropagation(); onRename(node.account_id, renameValue); }}
+                disabled={savingId === node.account_id} title="Save new name">
+                {savingId === node.account_id ? <span className="spinner-xs" /> : '✓'}
+              </button>
+              <button className="node-action-btn cancel"
+                onClick={e => { e.stopPropagation(); setRenamingId(null); setRenameValue(''); }} title="Discard changes">✕</button>
+            </div>
+          ) : (
+            <div className="node-actions" style={{ margin: 0 }}>
+              <button
+                className="node-action-btn"
+                style={{ color: 'var(--primary-action, #7c6ff7)' }}
+                onClick={e => { e.stopPropagation(); onViewTransactions(node.account_id); }}
+                title="View transactions"
+              >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
               </button>
-            )}
-            {/* LLM toggle — all non-system accounts */}
-            <button
-              className="node-action-btn"
-              onClick={e => { e.stopPropagation(); onToggleLlm(node); }}
-              title={node.include_in_llm ? 'Exclude this account from AI-suggested categories' : 'Include this account when AI suggests categories'}
-              style={{ opacity: node.include_in_llm ? 1 : 0.4, fontSize: 13 }}
-            >
-              🤖
-            </button>
-            <button className="node-action-btn edit"
-              onClick={e => { e.stopPropagation(); setRenamingId(node.account_id); setRenameValue(node.account_name); }}
-              title="Rename this account">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-            </button>
-            <button className="node-action-btn deactivate"
-              onClick={e => { e.stopPropagation(); onDeactivate(node); }} title="Remove this account from your chart">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6M14 11v6"/>
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {hovered && !isRenaming && node.is_system_generated && (
-          <div className="node-actions">
-            {/* View transactions even for system accounts */}
-            <button
-              className="node-action-btn"
-              style={{ color: 'var(--primary-action, #7c6ff7)', opacity: 0.85 }}
-              onClick={e => { e.stopPropagation(); onViewTransactions(node.account_id); }}
-              title="View all transactions linked to this account"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-              </svg>
-            </button>
-            {/* LLM toggle — system accounts can also be excluded */}
-            <button
-              className="node-action-btn"
-              onClick={e => { e.stopPropagation(); onToggleLlm(node); }}
-              title={node.include_in_llm ? 'Exclude this account from AI-suggested categories' : 'Include this account when AI suggests categories'}
-              style={{ opacity: node.include_in_llm ? 1 : 0.4, fontSize: 13 }}
-            >
-              🤖
-            </button>
-            <span className="system-lock" title="This is a built-in system account and cannot be edited">🔒</span>
-          </div>
-        )}
-
-        {isRenaming && (
-          <div className="node-actions">
-            <button className="node-action-btn save"
-              onClick={e => { e.stopPropagation(); onRename(node.account_id, renameValue); }}
-              disabled={savingId === node.account_id} title="Save new name">
-              {savingId === node.account_id ? <span className="spinner-xs" /> : '✓'}
-            </button>
-            <button className="node-action-btn cancel"
-              onClick={e => { e.stopPropagation(); setRenamingId(null); setRenameValue(''); }} title="Discard changes">✕</button>
-          </div>
-        )}
+              <AccountActionsMenu
+                node={node}
+                onRename={() => { setRenamingId(node.account_id); setRenameValue(node.account_name); }}
+                onDeactivate={() => onDeactivate(node)}
+                onEditIdentifier={() => onEditIdentifier(node)}
+                onToggleLlm={() => onToggleLlm(node)}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
-      {isOpen && hasChildren && (
-        <div className="node-children">
-          {node.children.map(child => (
-            <AccountNode key={child.account_id} node={child}
-              onRename={onRename} onDeactivate={onDeactivate} onEditIdentifier={onEditIdentifier}
-              onToggleLlm={onToggleLlm}
-              renamingId={renamingId} setRenamingId={setRenamingId}
-              renameValue={renameValue} setRenameValue={setRenameValue}
-              savingId={savingId} onViewTransactions={onViewTransactions} />
-          ))}
-        </div>
-      )}
-    </div>
+      {isOpen && hasChildren && node.children.map(child => (
+        <AccountNode key={child.account_id} node={child}
+          onRename={onRename} onDeactivate={onDeactivate} onEditIdentifier={onEditIdentifier}
+          onToggleLlm={onToggleLlm}
+          renamingId={renamingId} setRenamingId={setRenamingId}
+          renameValue={renameValue} setRenameValue={setRenameValue}
+          savingId={savingId} onViewTransactions={onViewTransactions} level={level + 1} />
+      ))}
+    </>
   );
 };
 
@@ -345,11 +394,11 @@ const Accounts = () => {
   const [identifierTarget, setIdentifierTarget] = useState(null);
 
   const types = [
-    { key: 'ASSET',     label: 'Assets',      icon: '💰' },
-    { key: 'LIABILITY', label: 'Liabilities', icon: '💳' },
-    { key: 'EQUITY',    label: 'Equity',       icon: '⚖️' },
-    { key: 'INCOME',    label: 'Income',       icon: '📈' },
-    { key: 'EXPENSE',   label: 'Expenses',     icon: '📉' },
+    { key: 'ASSET',     label: 'Assets' },
+    { key: 'LIABILITY', label: 'Liabilities' },
+    { key: 'EQUITY',    label: 'Equity' },
+    { key: 'INCOME',    label: 'Income' },
+    { key: 'EXPENSE',   label: 'Expenses' },
   ];
 
   const fetchAccounts = async () => {
@@ -501,18 +550,19 @@ const Accounts = () => {
       {loading ? (
         <div className="loading-state">Loading accounts...</div>
       ) : (
-        <div className="accounts-grid">
-          {types.map(type => {
-            const tree = buildTree(accounts, type.key);
+        <div className="accounts-dashboard">
+          {['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY'].map((typeKey) => {
+            const type = types.find(t => t.key === typeKey);
+            const tree = buildTree(accounts, typeKey);
             return (
-              <div key={type.key} className="account-type-card">
-                <div className="type-card-header">
-                  <span className="type-icon">{type.icon}</span>
-                  <h2>{type.label}</h2>
+              <div key={typeKey} className={`accounts-table ${typeKey === 'EQUITY' ? 'equity-cell' : ''}`}>
+                <div className="accounts-table-header">
+                  <div className="accounts-col-account">{type.label}</div>
+                  <div className="accounts-col-actions" style={{ paddingRight: '24px' }}>ACTIONS</div>
                 </div>
-                <div className="type-card-body">
+                <div className="accounts-table-body">
                   {tree.length === 0 ? (
-                    <p className="no-accounts">No {type.label.toLowerCase()} added yet.</p>
+                    <div className="accounts-row-empty">No {type.label.toLowerCase()} added yet.</div>
                   ) : (
                     tree.map(node => (
                       <AccountNode key={node.account_id} node={node}

@@ -7,42 +7,7 @@ import '../../styles/Analytics.css';
 import { formatDate } from '../../utils/dateUtils';
 import { motion } from 'framer-motion';
 
-/**
- * Compute date range for a given period
- * Uses Indian Financial Year: April 1 → March 31
- */
-const getPeriodRange = (period) => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-indexed
-  const day = now.getDate();
-  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  if (period === 'all') {
-    return { from: '2000-01-01', to: todayStr };
-  }
-  if (period === 'month') {
-    return {
-      from: `${year}-${String(month + 1).padStart(2, '0')}-01`,
-      to: todayStr
-    };
-  }
-  if (period === 'quarter') {
-    // Indian FY Quarters: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar
-    let qStart;
-    if (month >= 3 && month <= 5) qStart = `${year}-04-01`;       // Q1
-    else if (month >= 6 && month <= 8) qStart = `${year}-07-01`;  // Q2
-    else if (month >= 9 && month <= 11) qStart = `${year}-10-01`; // Q3
-    else qStart = `${year}-01-01`;                                 // Q4
-    return { from: qStart, to: todayStr };
-  }
-  if (period === 'year') {
-    // Indian FY: Apr 1 of current/previous year
-    const fyStartYear = month >= 3 ? year : year - 1;
-    return { from: `${fyStartYear}-04-01`, to: todayStr };
-  }
-  return { from: '2000-01-01', to: todayStr };
-};
 
 /**
  * Format currency value for P&L table — show as number with 2 decimal places
@@ -76,7 +41,13 @@ const Analytics = () => {
   const location = useLocation();
   const initialTab = new URLSearchParams(location.search).get('tab');
   const [view, setView] = useState(initialTab === 'balance' ? 'balance' : initialTab === 'ledger' ? 'ledger' : 'pl');  // 'pl' | 'balance' | 'ledger'
-  const [period, setPeriod] = useState('all');      // 'month' | 'quarter' | 'year' | 'all' | 'custom'
+  // Date Range State
+  const datePopupRef = React.useRef(null);
+  const downloadPopupRef = React.useRef(null);
+  const exportFns = React.useRef({ pl: {}, balance: {}, ledger: {} });
+  const [isDatePopupOpen, setIsDatePopupOpen] = useState(false);
+  const [showDownload, setShowDownload] = useState(false);
+  
   const [loading, setLoading] = useState(true);
   const [plData, setPlData] = useState(null);
   const [balanceData, setBalanceData] = useState(null);
@@ -87,20 +58,62 @@ const Analytics = () => {
   const [showPLDownload, setShowPLDownload] = useState(false);
   const [showBSDownload, setShowBSDownload] = useState(false);
   const [showLedgerDownload, setShowLedgerDownload] = useState(false);
+  
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
-  // Custom date range state
-  const getDefaultDates = () => {
-    const now = new Date();
-    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-    return {
-      from: `${fyStartYear}-04-01`,
-      to: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    };
+  const setQuickDate = (option) => {
+    const today = new Date();
+    const tzoffset = today.getTimezoneOffset() * 60000;
+    const toLocalISO = (d) => new Date(d - tzoffset).toISOString().split('T')[0];
+    
+    let start = '';
+    let end = toLocalISO(today);
+
+    if (option === '7D') {
+      const d = new Date(today);
+      d.setDate(today.getDate() - 7);
+      start = toLocalISO(d);
+    } else if (option === '30D') {
+      const d = new Date(today);
+      d.setDate(today.getDate() - 30);
+      start = toLocalISO(d);
+    } else if (option === 'THIS_MONTH') {
+      const d = new Date(today.getFullYear(), today.getMonth(), 1);
+      start = toLocalISO(d);
+    } else if (option === 'LAST_MONTH') {
+      const dStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const dEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      start = toLocalISO(dStart);
+      end = toLocalISO(dEnd);
+    } else if (option === 'THIS_YEAR') {
+      const d = new Date(today.getFullYear(), 0, 1);
+      start = toLocalISO(d);
+    } else if (option === 'LAST_FY') {
+      const currentYear = today.getFullYear();
+      let startYear = currentYear - 1;
+      let endYear = currentYear;
+      if (today.getMonth() < 3) { 
+          startYear = currentYear - 2;
+          endYear = currentYear - 1;
+      }
+      const dStart = new Date(startYear, 3, 1); 
+      const dEnd = new Date(endYear, 2, 31); 
+      start = toLocalISO(dStart);
+      end = toLocalISO(dEnd);
+    }
+    setDateRange({ start, end });
   };
-  const defaults = getDefaultDates();
-  const [customFrom, setCustomFrom] = useState(defaults.from);
-  const [customTo, setCustomTo] = useState(defaults.to);
-  const [showCustomPopup, setShowCustomPopup] = useState(false);
+
+  useEffect(() => {
+    if (!isDatePopupOpen) return;
+    const handleClickOutside = (e) => {
+      if (datePopupRef.current && !datePopupRef.current.contains(e.target)) {
+        setIsDatePopupOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isDatePopupOpen]);
 
   useEffect(() => {
     const fetchAccounts = async () => {
@@ -128,11 +141,12 @@ const Analytics = () => {
         return;
       }
 
-      const range = period === 'custom'
-        ? { from: customFrom, to: customTo }
-        : getPeriodRange(period);
+      const range = {
+        from: dateRange.start || '2000-01-01',
+        to: dateRange.end || new Date().toISOString().split('T')[0]
+      };
 
-      console.log('Analytics fetch:', { period, range, view });
+      console.log('Analytics fetch:', { range, view });
 
       // Fetch entire accounts hierarchy for this user (needed by both P&L and Balance Sheet)
       const { data: allAccounts } = await supabase
@@ -164,7 +178,7 @@ const Analytics = () => {
         COGS_KEYWORDS.some(kw => a.account_name.toLowerCase().includes(kw))
       );
 
-      if (view === 'pl') {        // Step 2: Fetch P&L transactions
+      const fetchPL = async () => {        // Step 2: Fetch P&L transactions
         let query = supabase
           .from('transactions')
           .select(`
@@ -368,7 +382,9 @@ const Analytics = () => {
           isPending: includePending,
           dateRange: range,
         });
-      } else if (view === 'balance') {
+      };
+
+      const fetchBalance = async () => {
         // Fetch Balance Sheet data
         let bsQuery = supabase
           .from('journal_entries')
@@ -485,7 +501,9 @@ const Analytics = () => {
             totalLiabilitiesEquities,
             dateRange: range
         });
-      } else {
+      };
+
+      const fetchLedger = async () => {
         // Fetch Ledger data
         const { data, error } = await supabase
           .from('journal_entries')
@@ -513,7 +531,9 @@ const Analytics = () => {
         if (error) throw error;
 
         setLedgerData(data || []);
-      }
+      };
+
+      await Promise.all([fetchPL(), fetchBalance(), fetchLedger()]);
     } catch (err) {
       console.error('Error fetching analytics data:', err);
       setPlData(null);
@@ -526,7 +546,7 @@ const Analytics = () => {
 
   useEffect(() => {
     fetchData();
-  }, [period, view, selectedAccountId, includePending, customFrom, customTo]);
+  }, [dateRange, selectedAccountId, includePending]);
 
   const handleItemClick = (item) => {
     if (item.amount !== 0 && item.txns && item.txns.length > 0) {
@@ -692,52 +712,15 @@ const Analytics = () => {
         styles: { fontSize: 9, cellPadding: 3 },
       });
 
+      exportFns.current.pl.pdf = exportPLToPDF;
+      exportFns.current.pl.csv = exportPLToCSV;
+
       doc.save(`Profit_and_Loss_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (
       <div className="pl-report-container">
-        {isPending && (
-          <div className="pl-projected-banner">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <span><strong>Projected View</strong> — includes pending/unposted transactions. Numbers are estimates.</span>
-          </div>
-        )}
 
-        {/* Report Header */}
-        <div className="pl-report-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <h2 className="pl-report-title">Profit and Loss</h2>
-            <div className="pl-report-meta">
-              <span>Basis : Accrual</span>
-              <span>From {dateRange ? fmtDate(dateRange.from) : ''} To {dateRange ? fmtDate(dateRange.to) : ''}</span>
-            </div>
-          </div>
-          <div className="export-dropdown">
-            <button 
-              className="action-btn outline-btn" 
-              onClick={() => setShowPLDownload(!showPLDownload)}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.85rem' }}
-            >
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              Download
-              <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ transform: showPLDownload ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-            </button>
-            
-            {showPLDownload && (
-              <div className="export-menu">
-                <button className="export-menu-item" onClick={() => { exportPLToPDF(); setShowPLDownload(false); }}>
-                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                  PDF Report
-                </button>
-                <button className="export-menu-item" onClick={() => { exportPLToCSV(); setShowPLDownload(false); }}>
-                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                  CSV Data
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* P&L Table */}
         <div className="pl-table">
@@ -978,45 +961,15 @@ const Analytics = () => {
         styles: { fontSize: 9, cellPadding: 3 },
       });
 
+      exportFns.current.balance.pdf = exportBalanceToPDF;
+      exportFns.current.balance.csv = exportBalanceToCSV;
+
       doc.save(`Balance_Sheet_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (
       <div className="pl-report-container">
-        {/* Report Header */}
-        <div className="pl-report-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <h2 className="pl-report-title">Balance Sheet</h2>
-            <div className="pl-report-meta">
-              <span>Basis : Accrual</span>
-              <span>As of {dateRange ? fmtDate(dateRange.to) : ''}</span>
-            </div>
-          </div>
-          <div className="export-dropdown">
-            <button 
-              className="action-btn outline-btn" 
-              onClick={() => setShowBSDownload(!showBSDownload)}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.85rem' }}
-            >
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              Download
-              <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ transform: showBSDownload ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-            </button>
-            
-            {showBSDownload && (
-              <div className="export-menu">
-                <button className="export-menu-item" onClick={() => { exportBalanceToPDF(); setShowBSDownload(false); }}>
-                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                  PDF Report
-                </button>
-                <button className="export-menu-item" onClick={() => { exportBalanceToCSV(); setShowBSDownload(false); }}>
-                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                  CSV Data
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+
 
         {/* Balance Sheet Table */}
         <div className="pl-table">
@@ -1179,38 +1132,14 @@ const Analytics = () => {
         styles: { fontSize: 8 },
       });
 
+      exportFns.current.ledger.pdf = exportLedgerToPDF;
+      exportFns.current.ledger.csv = exportLedgerToCSV;
+
       doc.save(`Journal_Entries_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {/* Ledger Header with Export Dropdown */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '8px' }}>
-          <div className="export-dropdown">
-            <button 
-              className="action-btn outline-btn" 
-              onClick={() => setShowLedgerDownload(!showLedgerDownload)}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', fontSize: '0.8rem' }}
-            >
-              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              Download
-              <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ transform: showLedgerDownload ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-            </button>
-            
-            {showLedgerDownload && (
-              <div className="export-menu">
-                <button className="export-menu-item" onClick={() => { exportLedgerToPDF(); setShowLedgerDownload(false); }}>
-                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                  PDF Journal
-                </button>
-                <button className="export-menu-item" onClick={() => { exportLedgerToCSV(); setShowLedgerDownload(false); }}>
-                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                  CSV Data
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
         {/* Header */}
         <div style={{
           display: 'grid', gridTemplateColumns: '110px 1fr 160px 120px 120px',
@@ -1317,192 +1246,239 @@ const Analytics = () => {
     );
   };
 
+  const renderPLSidebar = () => {
+    if (!plData) return null;
+    return (
+      <>
+        <div className="summary-card">
+          <div className="summary-title">Total Income</div>
+          <div className="summary-value positive">{formatCurrency(plData.totalIncome)}</div>
+          <div className="summary-subtitle">All time</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-title">Total Expenses</div>
+          <div className="summary-value negative">{formatCurrency(Math.abs(plData.totalExpense))}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-title">Net Profit/Loss</div>
+          <div className={`summary-value ${plData.netPL >= 0 ? 'positive' : 'negative'}`}>
+            {formatCurrency(plData.netPL)}
+          </div>
+        </div>
+        <div className="analytics-metadata">
+          <span>Basis: Accrual</span>
+          <span>
+            {(dateRange.start || dateRange.end)
+              ? `${dateRange.start ? formatDate(dateRange.start) : 'Start'} - ${dateRange.end ? formatDate(dateRange.end) : 'End'}`
+              : 'All time'}
+          </span>
+        </div>
+      </>
+    );
+  };
+
+  const renderBalanceSidebar = () => {
+    if (!balanceData) return null;
+    return (
+      <>
+        <div className="summary-card">
+          <div className="summary-title">Total Assets</div>
+          <div className="summary-value positive">{formatCurrency(balanceData.totalAssets)}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-title">Total Liabilities</div>
+          <div className="summary-value negative">{formatCurrency(balanceData.totalLiabilities)}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-title">Total Equity</div>
+          <div className={`summary-value ${balanceData.netAssets >= 0 ? 'positive' : 'negative'}`}>
+            {formatCurrency(balanceData.netAssets)}
+          </div>
+        </div>
+        <div className="analytics-metadata">
+          <span>Basis: Accrual</span>
+          <span>
+            {(dateRange.start || dateRange.end)
+              ? `As of ${dateRange.end ? formatDate(dateRange.end) : formatDate(new Date())}`
+              : `As of ${formatDate(new Date())}`}
+          </span>
+        </div>
+      </>
+    );
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="analytics-container">
-      {/* Header with Toggle */}
-      <div className="page-header">
-        <div className="header-title">
-          <h1>Analytics</h1>
-          <span className="header-separator">|</span>
-          <p>Financial performance and transaction details</p>
+      {/* Top Header */}
+      <div className="analytics-topbar">
+        <div className="segmented-control">
+          <button className={`segmented-tab ${view === 'pl' ? 'active' : ''}`} onClick={() => setView('pl')}>P&L</button>
+          <button className={`segmented-tab ${view === 'balance' ? 'active' : ''}`} onClick={() => setView('balance')}>Balance sheet</button>
+          <button className={`segmented-tab ${view === 'ledger' ? 'active' : ''}`} onClick={() => setView('ledger')}>Journal entries</button>
         </div>
-        <div className="view-tabs">
-          <button
-            className={`filter-tab ${view === 'pl' ? 'active' : ''}`}
-            onClick={() => setView('pl')}
-          >P&L</button>
-          <button
-            className={`filter-tab ${view === 'balance' ? 'active' : ''}`}
-            onClick={() => setView('balance')}
-          >Balance Sheet</button>
-          <button
-            className={`filter-tab ${view === 'ledger' ? 'active' : ''}`}
-            onClick={() => setView('ledger')}
-          >Journal Entries</button>
-        </div>
-      </div>
 
-      {/* Period Filter Tabs & Bank Filter */}
-      <div className="filter-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            className={`filter-tab ${period === 'all' ? 'active' : ''}`}
-            onClick={() => {
-              setPeriod('all');
-              setShowCustomPopup(false);
-            }}
-          >
-            All Time
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {view === 'pl' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', userSelect: 'none', fontSize: '13px', color: 'var(--text-secondary)' }}>
+              <div
+                onClick={() => setIncludePending(p => !p)}
+                style={{
+                  width: '36px', height: '20px', borderRadius: '10px', position: 'relative', cursor: 'pointer',
+                  background: includePending ? '#f59e0b' : 'var(--border-color)',
+                  transition: 'background 0.2s ease', flexShrink: 0
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: '2px',
+                  left: includePending ? '18px' : '2px',
+                  width: '16px', height: '16px', borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s ease',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                }} />
+              </div>
+              Include pending
+            </label>
+          )}
 
-          <div style={{ position: 'relative' }}>
+          {/* Date Picker Button */}
+          <div className="filter-popup-wrapper" ref={datePopupRef}>
             <button
-              className={`filter-tab ${period !== 'all' ? 'active' : ''}`}
-              onClick={() => {
-                if (period === 'all') setPeriod('month');
-                setShowCustomPopup(p => !p);
-              }}
+              className={`filter-tab ${(dateRange.start || dateRange.end) ? 'filter-tab-active' : ''}`}
+              onClick={() => setIsDatePopupOpen(v => !v)}
             >
-              Custom
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              {(dateRange.start || dateRange.end) ? 'Custom Date' : 'All time'}
             </button>
 
-            {showCustomPopup && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: '8px',
-                background: 'var(--bg-primary, #fff)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                padding: '16px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                zIndex: 100,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px',
-                minWidth: '240px'
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>Quick Select</label>
-                  <select
-                    value={period}
-                    onChange={(e) => setPeriod(e.target.value)}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border-color)',
-                      background: 'var(--bg-secondary)',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                      outline: 'none',
-                      cursor: 'pointer',
-                      width: '100%'
-                    }}
-                  >
-                    <option value="month">This Month</option>
-                    <option value="quarter">This Quarter</option>
-                    <option value="year">This FY</option>
-                    <option value="custom">Custom Date Range</option>
-                  </select>
+            {isDatePopupOpen && (
+              <div className="filter-popup" style={{ width: '280px', left: 0, right: 'auto' }}>
+                <div className="filter-popup-header">
+                  <span>Date Range</span>
+                  {(dateRange.start || dateRange.end) && (
+                    <button className="filter-clear-btn" onClick={() => { setDateRange({start: '', end: ''}); setIsDatePopupOpen(false); }}>Clear</button>
+                  )}
+                </div>
+                
+                <div className="filter-group">
+                  <div className="filter-group-label" style={{ marginBottom: '8px' }}>Quick Select</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', padding: '0 12px 8px' }}>
+                    <button className="filter-tab" style={{ justifyContent: 'center' }} onClick={() => setQuickDate('7D')}>Last 7 Days</button>
+                    <button className="filter-tab" style={{ justifyContent: 'center' }} onClick={() => setQuickDate('30D')}>Last 30 Days</button>
+                    <button className="filter-tab" style={{ justifyContent: 'center' }} onClick={() => setQuickDate('THIS_MONTH')}>This Month</button>
+                    <button className="filter-tab" style={{ justifyContent: 'center' }} onClick={() => setQuickDate('LAST_MONTH')}>Last Month</button>
+                    <button className="filter-tab" style={{ justifyContent: 'center' }} onClick={() => setQuickDate('THIS_YEAR')}>This Year</button>
+                    <button className="filter-tab" style={{ justifyContent: 'center' }} onClick={() => setQuickDate('LAST_FY')}>Last FY</button>
+                  </div>
                 </div>
 
-                {period === 'custom' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>Date Range</label>
-                    <input
-                      type="date"
-                      value={customFrom}
-                      onChange={e => setCustomFrom(e.target.value)}
-                      className="pl-date-input"
-                      style={{ width: '100%' }}
-                    />
-                    <div style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>to</div>
-                    <input
-                      type="date"
-                      value={customTo}
-                      onChange={e => setCustomTo(e.target.value)}
-                      className="pl-date-input"
-                      style={{ width: '100%' }}
-                    />
+                <div className="filter-group">
+                  <div className="filter-group-label" style={{ marginBottom: '8px' }}>Custom Range</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 12px 6px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 'bold' }}>Start Date</label>
+                      <input 
+                        type="date" 
+                        className="amount-editor-input" 
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        value={dateRange.start}
+                        onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 'bold' }}>End Date</label>
+                      <input 
+                        type="date" 
+                        className="amount-editor-input" 
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        value={dateRange.end}
+                        onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))}
+                      />
+                    </div>
                   </div>
-                )}
+                </div>
 
-                <button
-                   onClick={() => setShowCustomPopup(false)}
-                   style={{
-                     padding: '8px',
-                     background: 'var(--primary-color, rgb(27, 85, 226))',
-                     color: '#fff',
-                     border: 'none',
-                     borderRadius: '6px',
-                     cursor: 'pointer',
-                     fontSize: '14px',
-                     fontWeight: '600',
-                     marginTop: '4px',
-                     width: '100%'
-                   }}
-                >
-                  Apply Filters
+                <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button 
+                    className="action-btn outline-btn" 
+                    onClick={() => setIsDatePopupOpen(false)}
+                    style={{ width: '100%', justifyContent: 'center' }}
+                  >
+                    Apply Filter
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Unified Download Button */}
+          <div className="export-dropdown" ref={downloadPopupRef}>
+            <button 
+              className="action-btn outline-btn" 
+              onClick={() => setShowDownload(!showDownload)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.85rem' }}
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              Download
+              <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ transform: showDownload ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+            </button>
+            
+            {showDownload && (
+              <div className="export-menu">
+                <button className="export-menu-item" onClick={() => { exportFns.current[view]?.pdf?.(); setShowDownload(false); }}>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                  PDF Report
+                </button>
+                <button className="export-menu-item" onClick={() => { exportFns.current[view]?.csv?.(); setShowDownload(false); }}>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                  CSV Data
                 </button>
               </div>
             )}
           </div>
         </div>
-        
-        {(view === 'pl' || view === 'balance') && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {bankAccounts.length > 0 && (
-              <select
-                value={selectedAccountId}
-                onChange={e => setSelectedAccountId(e.target.value)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  fontSize: '14px',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  minWidth: '150px'
-                }}
-              >
-                <option value="ALL">All Accounts</option>
-                {bankAccounts.map(acc => (
-                  <option key={acc.account_id} value={acc.account_id}>{acc.account_name}</option>
-                ))}
-              </select>
-            )}
-            {view === 'pl' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', userSelect: 'none', fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                <div
-                  onClick={() => setIncludePending(p => !p)}
-                  style={{
-                    width: '36px', height: '20px', borderRadius: '10px', position: 'relative', cursor: 'pointer',
-                    background: includePending ? '#f59e0b' : 'var(--border-color)',
-                    transition: 'background 0.2s ease', flexShrink: 0
-                  }}
-                >
-                  <div style={{
-                    position: 'absolute', top: '2px',
-                    left: includePending ? '18px' : '2px',
-                    width: '16px', height: '16px', borderRadius: '50%',
-                    background: '#fff', transition: 'left 0.2s ease',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                  }} />
-                </div>
-                Include Pending
-              </label>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Content */}
-      {view === 'pl' && renderPLView()}
-      {view === 'balance' && renderBalanceView()}
-      {view === 'ledger' && renderLedgerView()}
+      <div className="analytics-content">
+        <div className="analytics-layout">
+          {view !== 'ledger' && (
+            <div className="analytics-sidebar">
+              {view === 'pl' && renderPLSidebar()}
+              {view === 'balance' && renderBalanceSidebar()}
+              
+              <div className="analytics-filter-container">
+                {bankAccounts.length > 0 && (
+                  <select
+                    value={selectedAccountId}
+                    onChange={e => setSelectedAccountId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--glass-border)',
+                      background: 'transparent',
+                      color: 'var(--text-secondary)',
+                      fontSize: '13px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="ALL">All accounts</option>
+                    {bankAccounts.map(acc => (
+                      <option key={acc.account_id} value={acc.account_id}>{acc.account_name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <div className={`analytics-main ${view === 'ledger' ? 'full-width' : ''}`}>
+            <div style={{ display: view === 'pl' ? 'block' : 'none' }}>{renderPLView()}</div>
+            <div style={{ display: view === 'balance' ? 'block' : 'none' }}>{renderBalanceView()}</div>
+            <div style={{ display: view === 'ledger' ? 'block' : 'none' }}>{renderLedgerView()}</div>
+          </div>
+        </div>
+      </div>
     </motion.div>
   );
 };
