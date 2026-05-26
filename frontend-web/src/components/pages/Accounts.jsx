@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../shared/supabase';
 import AddAccountModal from '../AddAccountModal';
 import '../../styles/Accounts.css';
+import { motion } from 'framer-motion';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Edit Identifier Modal
@@ -469,10 +470,11 @@ const Accounts = () => {
   };
 
   return (
-    <div className="accounts-container">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="accounts-container">
       <div className="page-header">
         <div className="header-title">
           <h1>Chart of Accounts</h1>
+          <span className="header-separator">|</span>
           <p>Manage your account hierarchy.</p>
         </div>
         <button className="action-btn" onClick={() => setAddModalOpen(true)}>+ Add Account</button>
@@ -529,7 +531,7 @@ const Accounts = () => {
           })}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 

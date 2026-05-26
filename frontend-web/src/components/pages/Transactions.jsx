@@ -7,6 +7,7 @@ import { ICONS } from '../Icons';
 import '../../styles/Transactions.css';
 import API from '../../api/api';
 import PDFViewer from '../PDFViewer';
+import { motion } from 'framer-motion';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 const ATTENTION_ORDER = ['HIGH', 'MEDIUM', 'LOW'];
@@ -2016,10 +2017,11 @@ const Transactions = () => {
   ).length;
 
   return (
-    <div className="transactions-container">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="transactions-container">
       <div className="page-header">
         <div id="transactions-header-title" className="header-title">
           <h1 id="transactions-title">Transactions</h1>
+          <span className="header-separator">|</span>
           <p>Manage and categorize your bank statements and ledger entries.</p>
         </div>
         <div className="header-actions">
@@ -3382,7 +3384,7 @@ const Transactions = () => {
           )}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 

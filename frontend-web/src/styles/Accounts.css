@@ -1,5 +1,5 @@
 .accounts-container {
-  padding: 40px;
+  padding: 16px 32px;
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
@@ -10,13 +10,25 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .header-title h1 {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 800;
-  margin-bottom: 8px;
+  margin: 0;
+}
+
+.header-separator {
+  color: var(--glass-border);
+  font-size: 20px;
+  font-weight: 300;
 }
 
 .header-title p {

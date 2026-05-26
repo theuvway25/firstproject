@@ -1,5 +1,5 @@
 .transactions-container {
-  padding: 32px;
+  padding: 16px 32px;
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
@@ -12,13 +12,25 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .header-title h1 {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 800;
-  margin-bottom: 8px;
+  margin: 0;
+}
+
+.header-separator {
+  color: var(--glass-border);
+  font-size: 20px;
+  font-weight: 300;
 }
 
 .header-title p {
@@ -163,7 +175,7 @@
 .table-header.uniform-layout,
 .table-row.uniform-layout {
   display: grid;
-  grid-template-columns: 30px 90px 1fr 110px 220px 130px 130px;
+  grid-template-columns: 30px 90px 1fr 110px 300px 130px 130px;
   gap: 16px;
   align-items: flex-start;
 }

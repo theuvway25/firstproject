@@ -280,9 +280,9 @@ export default function ParsingPage() {
     };
 
     return (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '32px 40px' }}>
-            <div className="overview-header">
-                <h1>Parsing</h1>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '16px 32px' }}>
+            <div className="overview-header" style={{ marginBottom: '16px' }}>
+                <h1 style={{ fontSize: '24px', margin: 0 }}>Parsing</h1>
             </div>
 
             <div className="upload-page-card" style={{

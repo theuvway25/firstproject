@@ -3,6 +3,7 @@ import { supabase } from '../../shared/supabase';
 import { useNavigate } from 'react-router-dom';
 import '../../styles/Overview.css';
 import { formatDate } from '../../utils/dateUtils';
+import { motion } from 'framer-motion';
 
 const Overview = () => {
   const navigate = useNavigate();
@@ -402,7 +403,7 @@ const Overview = () => {
   const maxChartVal = Math.max(...chartData.map(d => Math.max(d.income, d.expense)), 1000);
 
   return (
-    <div className="overview-container">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="overview-container">
       <div className="overview-header">
         <h1>Overview Dashboard</h1>
         <div className="header-filters" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
@@ -848,7 +849,7 @@ const Overview = () => {
       )}
 
 
-    </div>
+    </motion.div>
   );
 };
 

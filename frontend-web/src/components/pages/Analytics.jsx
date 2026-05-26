@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import '../../styles/Analytics.css';
 import { formatDate } from '../../utils/dateUtils';
+import { motion } from 'framer-motion';
 
 /**
  * Compute date range for a given period
@@ -1317,11 +1318,12 @@ const Analytics = () => {
   };
 
   return (
-    <div className="analytics-container">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="analytics-container">
       {/* Header with Toggle */}
       <div className="page-header">
         <div className="header-title">
           <h1>Analytics</h1>
+          <span className="header-separator">|</span>
           <p>Financial performance and transaction details</p>
         </div>
         <div className="view-tabs">
@@ -1341,7 +1343,7 @@ const Analytics = () => {
       </div>
 
       {/* Period Filter Tabs & Bank Filter */}
-      <div className="filter-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+      <div className="filter-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             className={`filter-tab ${period === 'all' ? 'active' : ''}`}
@@ -1501,7 +1503,7 @@ const Analytics = () => {
       {view === 'pl' && renderPLView()}
       {view === 'balance' && renderBalanceView()}
       {view === 'ledger' && renderLedgerView()}
-    </div>
+    </motion.div>
   );
 };
 
