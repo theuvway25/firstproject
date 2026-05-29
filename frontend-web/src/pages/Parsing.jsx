@@ -711,6 +711,7 @@ export default function ParsingPage() {
                             border: '1px solid var(--border-color)',
                             background: 'var(--bg-secondary)',
                             color: currentPage === totalPages ? 'var(--text-secondary)' : 'var(--primary-action)',
+                            // fontWeight: 700,
                             fontWeight: 700,
                             cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
                             opacity: currentPage === totalPages ? 0.5 : 1,
