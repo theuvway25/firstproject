@@ -1,0 +1,39 @@
+account_name,keywords,template_account_name
+Current Assets,"current assets balance sheet savings liquid assets short term holdings",Current Assets
+Security Deposits,"security deposit advance rent deposit refundable amount landlord deposit",Security Deposits
+Prepaid Expenses,"prepaid advance payment subscription upfront yearly payment advance billing",Prepaid Expenses
+Tax Refund Receivable,"income tax refund ITR refund TDS refund government tax credit receivable",Tax Refund Receivable
+Fixed & Recurring Deposits,"FD RD fixed deposit recurring deposit bank deposit maturity interest",Fixed & Recurring Deposits
+Mutual Funds & Stocks,"mutual fund SIP equity stock share market investment portfolio demat",Mutual Funds & Stocks
+Provident Fund (PPF/EPF),"PPF EPF provident fund PF retirement savings employee contribution",Provident Fund (PPF/EPF)
+Other Investments,"NPS bonds gold jewellery alternative investment chit fund",Other Investments
+Property & Real Estate,"property land flat house apartment plot real estate purchase registration",Property & Real Estate
+Vehicle,"car bike scooter vehicle purchase two-wheeler four-wheeler automobile",Vehicle
+Credit Cards,"credit card bill payment statement due amount outstanding card repayment",Credit Cards
+Short-term Loans,"personal loan short term borrowing friend loan repayment advance salary",Short-term Loans
+Accrued Expenses,"pending bill due payment accrued outstanding payable month end expense",Accrued Expenses
+Home Loan,"home loan housing loan EMI mortgage principal repayment bank loan",Home Loan
+Vehicle Loan,"vehicle loan car loan bike loan two-wheeler EMI auto finance repayment",Vehicle Loan
+Personal Loan (Long-term),"personal loan long term EMI bank loan NBFC repayment instalment",Personal Loan (Long-term)
+Interest & Dividend Income,"interest income dividend FD interest savings interest stock dividend earned",Interest & Dividend Income
+Rental Income,"rent received rental income tenant monthly rent house rent property income",Rental Income
+Capital Gains,"capital gains profit sale property shares mutual fund redemption gain",Capital Gains
+Refunds & Cashbacks,"refund cashback return money back credit reversal platform refund coupon",Refunds & Cashbacks
+Food & Dining,"restaurant food order zomato swiggy cafe hotel meal groceries vegetable",Food & Dining
+Travel & Transport,"cab taxi auto rickshaw ola uber bus train flight travel booking intercity",Travel & Transport
+Housing & Rent,"house rent monthly rent landlord PG accommodation society maintenance",Housing & Rent
+Utilities,"electricity bill water bill gas bill internet broadband mobile recharge",Utilities
+Healthcare & Medical,"pharmacy medicine doctor clinic hospital diagnostic lab prescription health",Healthcare & Medical
+Personal Care,"salon haircut grooming beauty parlour spa personal hygiene cosmetics",Personal Care
+Entertainment & Leisure,"movie theatre OTT netflix hotstar amazon prime entertainment outing park",Entertainment & Leisure
+Clothing & Apparel,"clothes shopping shirt dress shoes footwear fashion apparel fabric tailoring",Clothing & Apparel
+Loan Interest & EMI Charges,"EMI interest loan charge processing fee prepayment penalty bank charge",Loan Interest & EMI Charges
+Bank & Card Fees,"bank charge annual fee card fee ATM charge NEFT IMPS wire transfer fee",Bank & Card Fees
+Insurance Premiums,"insurance premium life health term car bike policy renewal LIC premium",Insurance Premiums
+Income Tax,"income tax TDS advance tax self assessment tax challan tax payment",Income Tax
+Other Taxes & Levies,"property tax vehicle tax road tax GST professional tax municipal levy",Other Taxes & Levies
+Gifts & Donations,"gift donation charity NGO wedding gift festival offering temple church",Gifts & Donations
+Subscriptions & Memberships,"subscription membership annual plan gym membership club fee renewal app",Subscriptions & Memberships
+Stationery,"stationery pen notebook diary office supply paper file folder art material",Stationery
+Shopping Expenses,"shopping mall online order amazon flipkart general purchase retail store",Shopping Expenses
+Digital Wallets,"paytm phonepe gpay wallet upi digital payment mobile wallet balance",Digital Wallets
