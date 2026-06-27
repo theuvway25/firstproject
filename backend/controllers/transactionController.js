@@ -1510,7 +1510,7 @@ async function retryPipeline(req, res) {
     // 1. Verify the document belongs to this user
     const { data: doc, error: docErr } = await supabase
       .from('documents')
-      .select('document_id, user_id, grouping_status, pipeline_started_at')
+      .select('document_id, user_id, grouping_status, pipeline_started_at, created_at')
       .eq('document_id', document_id)
       .eq('user_id', userId)
       .single();
@@ -1525,10 +1525,15 @@ async function retryPipeline(req, res) {
     //   - pending                  : grouping job never ran (parser backend was asleep)
     //   - done                     : grouping finished but auto-pipeline was never triggered
     const STALE_MS = 5 * 60 * 1000;
+    
+    // Determine reference time: use pipeline_started_at if available, else fall back to created_at
+    const startTime = doc.pipeline_started_at 
+      ? new Date(doc.pipeline_started_at).getTime() 
+      : (doc.created_at ? new Date(doc.created_at).getTime() : Date.now() - (STALE_MS + 1000));
+
     const isStaleRunning =
       doc.grouping_status === 'pipeline_running' &&
-      doc.pipeline_started_at &&
-      Date.now() - new Date(doc.pipeline_started_at).getTime() > STALE_MS;
+      (Date.now() - startTime > STALE_MS);
 
     const isRetryable =
       doc.grouping_status === 'pipeline_failed' ||
