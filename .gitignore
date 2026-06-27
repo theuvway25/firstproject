@@ -33,4 +33,7 @@ Thumbs.db
 *.pdf
 
 # Ignore classification results
-classification_results.json
+classification_results.json
+
+# Ignore temporary scratch scripts
+scratch/
