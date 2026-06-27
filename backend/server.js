@@ -1,3 +1,4 @@
+// LedgerAI backend entry point.
 // ──────────────────────────────────────────────────────────────────────────
 // NETWORK: prefer IPv4 for all outbound requests.
 // openrouter.ai (and Supabase) resolve to dual-stack A/AAAA records, but this

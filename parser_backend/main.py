@@ -3,6 +3,7 @@ backend/main.py
 LedgerAI FastAPI entry point.
 Run with:  python -m uvicorn main:app --reload --port 8000
 """
+# LedgerAI parser/ML service.
 import logging
 import os
 import sys

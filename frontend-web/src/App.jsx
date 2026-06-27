@@ -1,3 +1,4 @@
+// LedgerAI web frontend root component.
 import React, { useState, useEffect } from 'react';
 import { useHeartbeat } from './hooks/useHeartbeat';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
