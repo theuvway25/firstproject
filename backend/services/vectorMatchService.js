@@ -552,8 +552,14 @@ function sanitizeMerchantString(str) {
     // TJSB/SBI format: UPI/DR|CR/refnum/merchant/...
     if (parts[1]?.toUpperCase() === 'DR' || parts[1]?.toUpperCase() === 'CR') {
       cleanStr = parts[3]?.trim() || cleanStr;  // merchant is at index 3
-    } else if (parts.length >= 4) {
-      cleanStr = parts[2]?.trim() || cleanStr;  // ICICI: merchant at index 2
+    } else if (parts.length >= 3) {
+      // Two common layouts:
+      //   HDFC : UPI/MERCHANT/refnum/...   → merchant at index 1, ref (numeric) at 2
+      //   ICICI: UPI/.../merchant/...      → merchant at index 2
+      // If index 2 is a pure reference number, the merchant lives at index 1.
+      const idx1 = (parts[1] || '').trim();
+      const idx2 = (parts[2] || '').trim();
+      cleanStr = /^\d+$/.test(idx2) ? (idx1 || idx2) : (idx2 || cleanStr);
     }
   }
   

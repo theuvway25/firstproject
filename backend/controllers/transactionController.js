@@ -9,8 +9,8 @@ const rulesEngineService = require('../services/rulesEngineService');
 function buildLedgerRows(txn, userId) {
   const { transaction_id, base_account_id, offset_account_id, amount, transaction_type, transaction_date, is_contra } = txn;
 
-  // For a contra, skip the mirror CREDIT leg
-  if (is_contra && transaction_type === 'CREDIT') {
+  // For a contra, skip the mirror INCOME leg
+  if (is_contra && transaction_type === 'INCOME') {
     return [];
   }
 
@@ -19,7 +19,7 @@ function buildLedgerRows(txn, userId) {
     return [];
   }
 
-  const entries = transaction_type === 'DEBIT'
+  const entries = transaction_type === 'EXPENSE'
     ? [
         { account_id: offset_account_id, debit_amount: amount,  credit_amount: 0 },
         { account_id: base_account_id,   debit_amount: 0,        credit_amount: amount }
@@ -226,7 +226,7 @@ async function recategorizeTransaction(req, res) {
             similarTransactions = prePipelineRaw.map(m => ({
               transaction_id: null,
               amount: m.debit || m.credit,
-              transaction_type: m.debit ? 'DEBIT' : 'CREDIT',
+              transaction_type: m.debit ? 'EXPENSE' : 'INCOME',
               transaction_date: m.txn_date,
               details: m.details,
               offset_account_id: null,
@@ -464,7 +464,7 @@ async function approveTransaction(req, res) {
             similarTransactions = prePipelineRaw.map(m => ({
               transaction_id: null,
               amount: m.debit || m.credit,
-              transaction_type: m.debit ? 'DEBIT' : 'CREDIT',
+              transaction_type: m.debit ? 'EXPENSE' : 'INCOME',
               transaction_date: m.txn_date,
               details: m.details,
               offset_account_id: null,
@@ -777,7 +777,7 @@ async function bulkAssignAndApproveTransactions(req, res) {
           transaction_date: row.txn_date,
           details: row.details,
           amount: row.debit || row.credit,
-          transaction_type: row.debit > 0 ? 'DEBIT' : 'CREDIT',
+          transaction_type: row.debit > 0 ? 'EXPENSE' : 'INCOME',
           categorised_by: 'MANUAL',
           confidence_score: 1.00,
           posting_status: 'POSTED',
@@ -894,7 +894,7 @@ async function manualCategorizeTransaction(req, res) {
         transaction_date: uncatData.txn_date,
         details: uncatData.details,
         amount: uncatData.debit || uncatData.credit,
-        transaction_type: uncatData.debit > 0 ? 'DEBIT' : 'CREDIT',
+        transaction_type: uncatData.debit > 0 ? 'EXPENSE' : 'INCOME',
         categorised_by: 'MANUAL',
         confidence_score: 1.00,
         posting_status: pending ? 'DRAFT'  : 'POSTED',
@@ -1027,7 +1027,7 @@ async function manualCategorizeTransaction(req, res) {
             similarTransactions = prePipelineRaw.map(m => ({
               transaction_id: null,
               amount: m.debit || m.credit,
-              transaction_type: m.debit ? 'DEBIT' : 'CREDIT',
+              transaction_type: m.debit ? 'EXPENSE' : 'INCOME',
               transaction_date: m.txn_date,
               details: m.details,
               offset_account_id: null,
@@ -1408,6 +1408,9 @@ async function manualAddTransaction(req, res) {
       return res.status(400).json({ error: 'amount must be a positive number.' });
     }
 
+    // Convert UI transaction_type (DEBIT/CREDIT) to DB enum value (EXPENSE/INCOME)
+    const dbTransactionType = transaction_type === 'DEBIT' ? 'EXPENSE' : 'INCOME';
+
     // Create an uncategorized_transactions row first so it shows up in the UI list
     // document_id is omitted (will be NULL) since this is a manual transaction
     const { data: uncatRow, error: uncatErr } = await supabase
@@ -1439,7 +1442,7 @@ async function manualAddTransaction(req, res) {
         transaction_date,
         details,
         amount: Number(amount),
-        transaction_type,
+        transaction_type: dbTransactionType,
         categorised_by: 'MANUAL',
         confidence_score: 1.00,
         posting_status: 'POSTED',

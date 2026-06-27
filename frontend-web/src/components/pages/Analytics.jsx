@@ -291,8 +291,8 @@ const Analytics = () => {
              uncategorized_transaction_id: txn.transaction_id,
              txn_date: txn.transaction_date,
              details: txn.details,
-             debit: txn.transaction_type === 'DEBIT' ? amt : 0,
-             credit: txn.transaction_type === 'CREDIT' ? amt : 0
+             debit: txn.transaction_type === 'EXPENSE' ? amt : 0,
+             credit: txn.transaction_type === 'INCOME' ? amt : 0
           };
 
           if (type === 'INCOME') {

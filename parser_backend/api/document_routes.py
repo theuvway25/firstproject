@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends, BackgroundTasks
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+import asyncio
 import os
 import shutil
 import tempfile
@@ -11,6 +12,7 @@ import threading
 import uuid
 import hashlib
 import base64
+import httpx
 from typing import Optional
 from db.connection import get_client, make_client, set_thread_client, clear_thread_client
 from services.account_detector import get_user_accounts, link_document_to_account, create_user_account
@@ -248,13 +250,26 @@ async def upload_and_process(
     # This survives Render restarts/deploys (no ephemeral local disk dependency).
     storage_path = f"{user_id}/{safe_filename}"
 
+    def _do_upload():
+        from supabase import create_client, ClientOptions
+        from config import SUPABASE_URL as _URL, SUPABASE_SERVICE_ROLE_KEY as _KEY
+        http_client = httpx.Client(
+            http2=False,
+            timeout=httpx.Timeout(connect=15.0, write=120.0, read=120.0, pool=15.0),
+        )
+        try:
+            upload_sb = create_client(_URL, _KEY, ClientOptions(httpx_client=http_client))
+            upload_sb.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": "application/pdf", "upsert": "false"},
+            )
+        finally:
+            http_client.close()
+
     sb = get_client()
     try:
-        sb.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
-            path=storage_path,
-            file=file_bytes,
-            file_options={"content-type": "application/pdf", "upsert": "false"},
-        )
+        await asyncio.get_running_loop().run_in_executor(None, _do_upload)
         logger.info("Uploaded to : supabase://%s/%s", SUPABASE_STORAGE_BUCKET, storage_path)
     except Exception as upload_err:
         logger.error("Supabase Storage upload failed: %s", upload_err)

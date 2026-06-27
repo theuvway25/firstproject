@@ -464,10 +464,24 @@ const Transactions = () => {
       .sort((a, b) => a.account_type.localeCompare(b.account_type) || a.account_name.localeCompare(b.account_name));
   }, [contextAccounts]);
 
-  // Notification on mount if categorizing is running
+  // Notification on mount if categorizing is running.
+  // The SSE stream is client-side and dies on a full page reload, so a persisted
+  // flag older than the backend's own timeout is stale — clear it, otherwise the
+  // "AI Categorise" button stays disabled (spinner) forever and can never refire.
   useEffect(() => {
     if (localStorage.getItem('isCategorizing') === 'true') {
-      showToast('Categorization is still running in the background. You can continue using the app.', 'info');
+      const startedAt = parseInt(localStorage.getItem('categoriseStartedAt') || '0', 10);
+      const STALE_MS = 5 * 60 * 1000; // matches backend grouping-wait timeout
+      if (!startedAt || Date.now() - startedAt > STALE_MS) {
+        // Stale flag from an interrupted run — reset so the button is usable again
+        localStorage.removeItem('isCategorizing');
+        localStorage.removeItem('categoriseStatus');
+        localStorage.removeItem('categoriseStartedAt');
+        setIsCategorizing(false);
+        setCategoriseStatus('');
+      } else {
+        showToast('Categorization is still running in the background. You can continue using the app.', 'info');
+      }
     }
   }, []);
 
@@ -720,6 +734,7 @@ const Transactions = () => {
     }
     setIsCategorizing(true);
     localStorage.setItem('isCategorizing', 'true');
+    localStorage.setItem('categoriseStartedAt', Date.now().toString());
     setCategoriseStatus('Starting…');
     localStorage.setItem('categoriseStatus', 'Starting…');
     showToast('Categorization started. You can continue using other parts of the app.', 'info');
@@ -776,6 +791,7 @@ const Transactions = () => {
     } finally {
       setIsCategorizing(false);
       localStorage.removeItem('isCategorizing');
+      localStorage.removeItem('categoriseStartedAt');
       setCategoriseStatus('');
       localStorage.removeItem('categoriseStatus');
     }
@@ -2708,7 +2724,7 @@ const Transactions = () => {
                       {txn.details}
                     </div>
                     <div className="similar-txn-amount">
-                      {txn.transaction_type === 'DEBIT' ? '−' : '+'}
+                      {txn.transaction_type === 'EXPENSE' ? '−' : '+'}
                       ₹{(txn.amount || 0).toLocaleString('en-IN')}
                     </div>
                     <div className="similar-txn-from">

@@ -1,3 +1,12 @@
+// ──────────────────────────────────────────────────────────────────────────
+// NETWORK: prefer IPv4 for all outbound requests.
+// openrouter.ai (and Supabase) resolve to dual-stack A/AAAA records, but this
+// host's IPv6 transit is flaky. Node's fetch (undici) sometimes picks a dead
+// IPv6 address and fails with "fetch failed", causing LLM categorization to
+// silently return no results. Forcing IPv4-first uses the reliable Cloudflare
+// anycast path. Must run before any network call.
+require('dns').setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');

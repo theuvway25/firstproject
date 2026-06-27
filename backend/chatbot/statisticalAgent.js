@@ -174,12 +174,12 @@ async function computePnL(userId, from, to) {
 
     const parentKey = pName && !isCatchAll(pName) ? pName : name; // Fallback to child if no parent
 
-    if (aType === 'INCOME' && txn.transaction_type === 'CREDIT') {
+    if (aType === 'INCOME' && txn.transaction_type === 'INCOME') {
       totalIncome += amt;
       incomeMap[name] = (incomeMap[name]||0) + amt;
       incomeParentMap[parentKey] = (incomeParentMap[parentKey]||0) + amt;
       incomeTxns.push(txn);
-    } else if (aType === 'EXPENSE' && txn.transaction_type === 'DEBIT') {
+    } else if (aType === 'EXPENSE' && txn.transaction_type === 'EXPENSE') {
       totalExpense += amt;
       expenseMap[name] = (expenseMap[name]||0) + amt;
       expenseParentMap[parentKey] = (expenseParentMap[parentKey]||0) + amt;
@@ -681,7 +681,7 @@ async function hMaxTransaction(userId, q) {
   const {from,to,label}=extractDateFilter(q);
   let query=supabase.from('transactions')
     .select('amount,details,transaction_date,transaction_type,accounts!transactions_offset_account_id_fkey(account_name,account_type)')
-    .eq('user_id',userId).eq('transaction_type','DEBIT');
+    .eq('user_id',userId).eq('transaction_type','EXPENSE');
   if(from) query=query.gte('transaction_date',from);
   if(to)   query=query.lte('transaction_date',to);
   query=baseFilter(query).order('amount',{ascending:false}).limit(30);
@@ -696,7 +696,7 @@ async function hMaxCredit(userId, q) {
   const {from,to,label}=extractDateFilter(q);
   let query=supabase.from('transactions')
     .select('amount,details,transaction_date,transaction_type,accounts!transactions_offset_account_id_fkey(account_name,account_type)')
-    .eq('user_id',userId).eq('transaction_type','CREDIT');
+    .eq('user_id',userId).eq('transaction_type','INCOME');
   if(from) query=query.gte('transaction_date',from);
   if(to)   query=query.lte('transaction_date',to);
   query=baseFilter(query).order('amount',{ascending:false}).limit(30);
@@ -711,7 +711,7 @@ async function hMinTransaction(userId, q) {
   const {from,to,label}=extractDateFilter(q);
   let query=supabase.from('transactions')
     .select('amount,details,transaction_date,transaction_type,accounts!transactions_offset_account_id_fkey(account_name,account_type)')
-    .eq('user_id',userId).eq('transaction_type','DEBIT').gt('amount',0);
+    .eq('user_id',userId).eq('transaction_type','EXPENSE').gt('amount',0);
   if(from) query=query.gte('transaction_date',from);
   if(to)   query=query.lte('transaction_date',to);
   query=baseFilter(query).order('amount',{ascending:true}).limit(30);
@@ -777,8 +777,8 @@ async function hMonthlySummary(userId, q) {
       if(isCatchAll(name)) return;
       const month=formatMonthYear(txn.transaction_date);
       if(!monthMap[month]) monthMap[month]={income:0,expense:0};
-      if(aType==='INCOME'&&txn.transaction_type==='CREDIT') monthMap[month].income+=+(txn.amount||0);
-      else if(aType==='EXPENSE'&&txn.transaction_type==='DEBIT') monthMap[month].expense+=+(txn.amount||0);
+      if(aType==='INCOME'&&txn.transaction_type==='INCOME') monthMap[month].income+=+(txn.amount||0);
+      else if(aType==='EXPENSE'&&txn.transaction_type==='EXPENSE') monthMap[month].expense+=+(txn.amount||0);
     });
 
     if(!Object.keys(monthMap).length) return {text:`No categorized transactions in **${dispLabel}**.`, data:null};
@@ -825,8 +825,8 @@ async function hYearlySummary(userId) {
   all.forEach(txn=>{
     const yr=new Date(txn.transaction_date).getFullYear();
     if(!yearMap[yr]) yearMap[yr]={income:0,expense:0};
-    if(txn.accounts?.account_type==='INCOME'&&txn.transaction_type==='CREDIT') yearMap[yr].income+=+(txn.amount||0);
-    else if(txn.accounts?.account_type==='EXPENSE'&&txn.transaction_type==='DEBIT') yearMap[yr].expense+=+(txn.amount||0);
+    if(txn.accounts?.account_type==='INCOME'&&txn.transaction_type==='INCOME') yearMap[yr].income+=+(txn.amount||0);
+    else if(txn.accounts?.account_type==='EXPENSE'&&txn.transaction_type==='EXPENSE') yearMap[yr].expense+=+(txn.amount||0);
   });
 
   const lines=Object.keys(yearMap).sort().map(yr=>{
@@ -863,7 +863,7 @@ async function hRecentTransactions(userId, q) {
 
   const lines = valid.map((t, i) => {
     const d = formatDate(t.transaction_date);
-    const icon = t.transaction_type === 'CREDIT' ? '🟢' : '🔴';
+    const icon = t.transaction_type === 'INCOME' ? '🟢' : '🔴';
     return `  ${i+1}. ${icon} **${INR(+t.amount)}** — ${t.details || t.accounts?.account_name || 'N/A'} (${d})`;
   });
 
@@ -903,8 +903,8 @@ async function hSavingsTrend(userId, q) {
     const monthLabel = formatMonthYear(d);
     if (!monthMap[key]) monthMap[key] = {label: monthLabel, income:0, expense:0};
     const amt = Number(txn.amount || 0);
-    if (aType==='INCOME' && txn.transaction_type==='CREDIT') monthMap[key].income += amt;
-    else if (aType==='EXPENSE' && txn.transaction_type==='DEBIT') monthMap[key].expense += amt;
+    if (aType==='INCOME' && txn.transaction_type==='INCOME') monthMap[key].income += amt;
+    else if (aType==='EXPENSE' && txn.transaction_type==='EXPENSE') monthMap[key].expense += amt;
   });
 
   if (!Object.keys(monthMap).length) return {text:`No categorized transactions found in **${label}**.`, data:null};

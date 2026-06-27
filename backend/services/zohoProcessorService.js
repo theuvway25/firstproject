@@ -100,7 +100,7 @@ async function insertThroughPipeline(supabase, uncatRow, txnRow, externalId, sin
 
         if (base && offset && amount) {
             let jRows;
-            if (txnRow.transaction_type === 'DEBIT') {
+            if (txnRow.transaction_type === 'EXPENSE') {
                 // Money OUT: debit base, credit offset
                 jRows = [
                     { account_id: base, debit_amount: amount, credit_amount: 0 },
@@ -211,7 +211,7 @@ async function processJournals(userId, supabase) {
                 transaction_date: journal.journal_date,
                 details,
                 amount,
-                transaction_type: isDebit ? 'DEBIT' : 'CREDIT',
+                transaction_type: isDebit ? 'EXPENSE' : 'INCOME',
                 categorised_by: 'MANUAL',
                 confidence_score: 1.00,
                 posting_status: 'POSTED',
@@ -288,7 +288,7 @@ async function processInvoices(userId, supabase) {
             transaction_date: invoice.date,
             details,
             amount,
-            transaction_type: 'DEBIT',
+            transaction_type: 'EXPENSE',
             categorised_by: 'MANUAL',
             confidence_score: 1.00,
             posting_status: 'POSTED',
@@ -373,7 +373,7 @@ async function processBills(userId, supabase) {
             transaction_date: bill.date,
             details,
             amount,
-            transaction_type: isPaid ? 'DEBIT' : 'CREDIT',
+            transaction_type: isPaid ? 'EXPENSE' : 'INCOME',
             categorised_by: 'MANUAL',
             confidence_score: 1.00,
             posting_status: 'POSTED',
@@ -445,7 +445,7 @@ async function processBankTransactions(userId, supabase) {
             transaction_date: txn.date,
             details,
             amount,
-            transaction_type: isDeposit ? 'DEBIT' : 'CREDIT',
+            transaction_type: isDeposit ? 'EXPENSE' : 'INCOME',
             categorised_by: 'MANUAL',
             confidence_score: 1.00,
             posting_status: 'POSTED',

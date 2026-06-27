@@ -1,6 +1,11 @@
 const logger = require('../utils/logger');
 require('dotenv').config();
 
+// Prefer IPv4 — this host's IPv6 transit is flaky and undici sometimes picks a
+// dead IPv6 address for openrouter.ai, causing intermittent "fetch failed".
+// Idempotent and process-wide; also set in server.js for all outbound calls.
+try { require('dns').setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
+
 // LLM Provider Configuration
 const LLM_PROVIDER = process.env.LLM_PROVIDER || 'openrouter'; // 'openrouter' or 'google'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -135,63 +140,100 @@ async function callLLM(messages, temperature = 0.1) {
     messageCount: messages.length
   });
 
-  // Make API call
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body)
-  });
+  // ── Resilient fetch ────────────────────────────────────────────────────────
+  // Retries transient failures (network "fetch failed", 429, 5xx) with backoff.
+  // Auth/credit errors (401/403/402) are NOT retried — they won't self-heal.
+  // An AbortController timeout prevents a hung connection from blocking forever.
+  const MAX_ATTEMPTS = 3;
+  const REQUEST_TIMEOUT_MS = 60000;
+  let lastErr;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorDetails = '';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+    let response;
     try {
-      const errorJson = JSON.parse(errorText);
-      errorDetails = errorJson.error?.message || errorJson.message || errorText;
-    } catch {
-      errorDetails = errorText;
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } catch (netErr) {
+      // Network-level failure (DNS, connect, abort/timeout) — retryable
+      clearTimeout(timer);
+      lastErr = netErr;
+      const reason = netErr.name === 'AbortError'
+        ? `timeout after ${REQUEST_TIMEOUT_MS}ms`
+        : (netErr.cause?.code || netErr.cause?.message || netErr.message);
+      logger.warn('LLM API network error — will retry', {
+        provider: LLM_PROVIDER,
+        attempt,
+        maxAttempts: MAX_ATTEMPTS,
+        reason
+      });
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 500 * attempt + Math.floor(Math.random() * 250)));
+        continue;
+      }
+      logger.error('❌ LLM API call failed (network)', { provider: LLM_PROVIDER, error: reason });
+      throw new Error(`LLM API network error: ${reason}`);
+    }
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorDetails = '';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetails = errorJson.error?.message || errorJson.message || errorText;
+      } catch {
+        errorDetails = errorText;
+      }
+
+      // Non-retryable auth/credit errors — fail fast
+      if (response.status === 402) {
+        logger.error('💳 LLM API: INSUFFICIENT CREDITS', { provider: LLM_PROVIDER, status: response.status, error: errorDetails });
+        throw new Error(`LLM API error (${response.status}): ${errorDetails}`);
+      }
+      if (response.status === 401 || response.status === 403) {
+        logger.error('🔑 LLM API: AUTHENTICATION FAILED', { provider: LLM_PROVIDER, status: response.status, error: errorDetails });
+        throw new Error(`LLM API error (${response.status}): ${errorDetails}`);
+      }
+
+      // Retryable server-side errors (429 rate limit, 5xx)
+      if (response.status === 429 || response.status >= 500) {
+        lastErr = new Error(`LLM API error (${response.status}): ${errorDetails}`);
+        logger.warn('LLM API transient HTTP error — will retry', {
+          provider: LLM_PROVIDER,
+          status: response.status,
+          attempt,
+          maxAttempts: MAX_ATTEMPTS
+        });
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise(r => setTimeout(r, 700 * attempt + Math.floor(Math.random() * 300)));
+          continue;
+        }
+      }
+
+      logger.error('❌ LLM API call failed', { provider: LLM_PROVIDER, status: response.status, error: errorDetails });
+      throw new Error(`LLM API error (${response.status}): ${errorDetails}`);
     }
 
-    // Provider-specific error handling
-    if (response.status === 402) {
-      logger.error('💳 LLM API: INSUFFICIENT CREDITS', {
-        provider: LLM_PROVIDER,
-        status: response.status,
-        error: errorDetails
-      });
-    } else if (response.status === 401 || response.status === 403) {
-      logger.error('🔑 LLM API: AUTHENTICATION FAILED', {
-        provider: LLM_PROVIDER,
-        status: response.status,
-        error: errorDetails
-      });
-    } else if (response.status === 429) {
-      logger.error('⏱️ LLM API: RATE LIMIT EXCEEDED', {
-        provider: LLM_PROVIDER,
-        status: response.status,
-        error: errorDetails
-      });
-    } else {
-      logger.error('❌ LLM API call failed', {
-        provider: LLM_PROVIDER,
-        status: response.status,
-        error: errorDetails
-      });
+    const data = await response.json();
+    const content = provider.extractResponse(data);
+
+    if (!content) {
+      logger.warn('⚠️ LLM response was empty');
+      throw new Error('Empty response from LLM');
     }
 
-    throw new Error(`LLM API error (${response.status}): ${errorDetails}`);
+    return content;
   }
 
-  const data = await response.json();
-  const content = provider.extractResponse(data);
-
-  if (!content) {
-    logger.warn('⚠️ LLM response was empty');
-    throw new Error('Empty response from LLM');
-  }
-
-  return content;
+  // Exhausted all attempts
+  throw lastErr || new Error('LLM API call failed after retries');
 }
 
 /**

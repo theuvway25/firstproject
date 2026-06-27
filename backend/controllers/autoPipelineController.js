@@ -205,7 +205,7 @@ async function runAutoPipeline(req, res) {
         transaction_date: t.txn_date,
         details: t.details,
         amount: t.debit || t.credit || 0,
-        transaction_type: t.debit ? 'DEBIT' : 'CREDIT',
+        transaction_type: t.debit ? 'EXPENSE' : 'INCOME',
         offset_account_id: t.offset_account_id,
         categorised_by: t.categorised_by || 'G_RULE',
         confidence_score: t.confidence_score || 1.0,
@@ -294,7 +294,11 @@ async function runAutoPipeline(req, res) {
       const batch = vectorNeeded.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (txn) => {
         const transactionType = txn.debit ? 'DEBIT' : 'CREDIT';
-        const stringToMatch = txn.details || txn.clean_merchant_name;
+        // Prefer the merchant name already extracted by the Python grouping job.
+        // The raw `details` (e.g. "UPI/SHIVAY FOODS/603418.../...") gets mangled
+        // to an empty string by sanitizeMerchantString's UPI parser, starving the
+        // keyword/vector matcher. clean_merchant_name ("SHIVAY FOODS") is correct.
+        const stringToMatch = txn.clean_merchant_name || txn.details;
         if (stringToMatch) {
           try {
             const vectorMatch = await vectorMatchService.findVectorMatch(stringToMatch, user_id, transactionType);
@@ -339,7 +343,7 @@ async function runAutoPipeline(req, res) {
           transaction_date: txn.txn_date,
           details: txn.details,
           amount: txn.debit || txn.credit || 0,
-          transaction_type: txn.debit ? 'DEBIT' : 'CREDIT',
+          transaction_type: txn.debit ? 'EXPENSE' : 'INCOME',
           offset_account_id: result.offset_account_id,
           categorised_by: result.categorised_by,
           confidence_score: result.confidence_score,
@@ -378,6 +382,13 @@ async function runAutoPipeline(req, res) {
             } else {
               logger.error('[AUTO-PIPELINE] Row insert failed', { id: row.uncategorized_transaction_id, error: singleErr.message, code: singleErr.code });
               failCount++;
+              // Route failed rows to llm_queue so "AI Categorise" can retry them
+              await supabase.from('llm_queue').insert({
+                uncategorized_transaction_id: row.uncategorized_transaction_id,
+                user_id,
+                document_id,
+                status: 'pending'
+              });
             }
           } catch (rowErr) {
             logger.error('[AUTO-PIPELINE] Unexpected error on row insert', { id: row.uncategorized_transaction_id, error: rowErr.message });

@@ -121,7 +121,7 @@ async function processUploadSSE(req, res) {
         .filter(item => item.document_id)
         .filter(item => !item.uncategorized_transaction_id || !writtenUncatIds.has(item.uncategorized_transaction_id))
         .map(item => {
-          const transactionType = item.debit ? 'DEBIT' : 'CREDIT';
+          const transactionType = item.debit ? 'EXPENSE' : 'INCOME';
 
           let finalOffsetAccountId = item.offset_account_id;
           let finalCategorisedBy   = item.categorised_by;
@@ -158,20 +158,28 @@ async function processUploadSSE(req, res) {
 
       if (rows.length === 0) return;
 
-      const { error } = await supabase
-        .from('transactions')
-        .insert(rows);
+      let successCount = 0;
+      let failCount = 0;
 
-      if (error) {
-        logger.error('Flush insert failed', { error: error.message, count: rows.length });
-      } else {
-        logger.info('Flush insert successful', { count: rows.length });
-        for (const row of rows) {
+      for (const row of rows) {
+        const { error } = await supabase.from('transactions').insert(row);
+        if (error) {
+          logger.error('Flush insert failed', { id: row.uncategorized_transaction_id, error: error.message, code: error.code });
+          failCount++;
+        } else {
           if (row.uncategorized_transaction_id) {
             writtenUncatIds.add(row.uncategorized_transaction_id);
+            await supabase
+              .from('uncategorized_transactions')
+              .update({ grouping_status: 'categorized' })
+              .eq('uncategorized_transaction_id', row.uncategorized_transaction_id);
           }
+          successCount++;
         }
       }
+
+      if (successCount > 0) logger.info('Flush insert complete', { successCount, failCount });
+      if (failCount > 0) logger.warn('Flush insert had failures', { successCount, failCount });
     };
 
     // ==========================================
@@ -669,19 +677,30 @@ async function processUploadSSE(req, res) {
 
     // ==========================================
     // MARK llm_queue ROWS AS DONE
+    // Only mark rows that were actually written to the transactions table.
+    // Unwritten rows stay 'pending' so the next "AI Categorise" click retries them.
     // ==========================================
     {
-      const processedUncatIds = llmTransactions.map(t => t.uncategorized_transaction_id).filter(Boolean);
-      if (processedUncatIds.length > 0) {
+      const writtenIds = [...writtenUncatIds].filter(Boolean);
+      if (writtenIds.length > 0) {
         const { error: qDoneErr } = await supabase
           .from('llm_queue')
           .update({ status: 'done' })
-          .in('uncategorized_transaction_id', processedUncatIds)
+          .in('uncategorized_transaction_id', writtenIds)
           .eq('user_id', userId);
 
         if (qDoneErr) {
           logger.warn('Failed to mark llm_queue rows as done', { error: qDoneErr.message });
+        } else {
+          logger.info('llm_queue rows marked done', { count: writtenIds.length });
         }
+      }
+
+      const unwrittenLlmIds = llmTransactions
+        .map(t => t.uncategorized_transaction_id)
+        .filter(id => id && !writtenUncatIds.has(id));
+      if (unwrittenLlmIds.length > 0) {
+        logger.warn('Some llm_queue rows were NOT written — left as pending for retry', { count: unwrittenLlmIds.length, ids: unwrittenLlmIds });
       }
     }
 

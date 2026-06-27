@@ -18,7 +18,7 @@ async function findMirrorTransaction(userId, amount, type, date, baseAccountId) 
     }
 
     // 1. Opposite Logic: Calculate exact opposite type
-    const oppositeType = type === 'CREDIT' ? 'DEBIT' : 'CREDIT';
+    const oppositeType = type === 'INCOME' ? 'EXPENSE' : 'INCOME';
 
     // 2. Date Window Logic (+/- 1 day)
     // Create Date objects using the input string. 
@@ -87,8 +87,8 @@ async function findAndLinkContras(transactionsBatch, userId, supabaseClient) {
 
         const txn = { ...transactionsBatch[i] };
         const amount = txn.debit || txn.credit || 0;
-        const type = txn.debit ? 'DEBIT' : 'CREDIT';
-        const oppositeType = type === 'DEBIT' ? 'CREDIT' : 'DEBIT';
+        const type = txn.debit ? 'EXPENSE' : 'INCOME';
+        const oppositeType = type === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
         const baseAccountId = txn.account_id || txn.base_account_id;
         const txnDate = new Date(txn.txn_date || txn.transaction_date);
 
@@ -100,7 +100,7 @@ async function findAndLinkContras(transactionsBatch, userId, supabaseClient) {
 
             const candidate = transactionsBatch[j];
             const cAmount = candidate.debit || candidate.credit || 0;
-            const cType = candidate.debit ? 'DEBIT' : 'CREDIT';
+            const cType = candidate.debit ? 'EXPENSE' : 'INCOME';
             const cBaseAccountId = candidate.account_id || candidate.base_account_id;
             const cDate = new Date(candidate.txn_date || candidate.transaction_date);
 
