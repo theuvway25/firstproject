@@ -78,6 +78,81 @@ async function createLedgerEntries(transactionId, baseAccountId, offsetAccountId
 }
 
 /**
+ * Priority 0.5 — merchant-name similar-transaction matching.
+ * Finds other PENDING transactions whose source uncategorized row carries the
+ * same clean_merchant_name (extracted by the Python grouping job) OR the
+ * identical raw details string. Catches same-merchant rows that the grouper
+ * split across different group_ids or left as singleton groups. The
+ * details-equality leg covers rows where the grouper produced inconsistent
+ * merchant names for the same raw string.
+ *
+ * Two-step lookup (uncat ids first, then .in() on transactions) — same
+ * pattern as the group-sibling lookup, avoids the broken PostgREST
+ * join-filter syntax. Separate queries per leg (instead of .or()) because
+ * raw details strings can contain characters that break .or() value quoting.
+ *
+ * merchantName/details are optional; whatever the caller hasn't already
+ * fetched is looked up from the current uncategorized row.
+ */
+async function findSimilarByMerchant(userId, currentUncatId, transactionType, merchantName = null, details = null) {
+  if (!currentUncatId) return [];
+
+  if (!merchantName || !details) {
+    const { data: uncatRow } = await supabase
+      .from('uncategorized_transactions')
+      .select('clean_merchant_name, details')
+      .eq('uncategorized_transaction_id', currentUncatId)
+      .eq('user_id', userId)
+      .single();
+    merchantName = merchantName || uncatRow?.clean_merchant_name;
+    details = details || uncatRow?.details;
+  }
+  if (!merchantName && !details) return [];
+
+  const candidateQuery = (column, value) => supabase
+    .from('uncategorized_transactions')
+    .select('uncategorized_transaction_id')
+    .eq('user_id', userId)
+    .eq(column, value)
+    .neq('uncategorized_transaction_id', currentUncatId)
+    .neq('grouping_status', 'skipped')
+    .limit(50);
+
+  const [merchantMatches, detailsMatches] = await Promise.all([
+    merchantName ? candidateQuery('clean_merchant_name', merchantName) : { data: [] },
+    details ? candidateQuery('details', details) : { data: [] }
+  ]);
+
+  const matchIds = [...new Set(
+    [...(merchantMatches.data || []), ...(detailsMatches.data || [])]
+      .map(r => r.uncategorized_transaction_id)
+  )];
+  if (matchIds.length === 0) return [];
+
+  const { data: pendingTxns } = await supabase
+    .from('transactions')
+    .select(`
+      transaction_id,
+      uncategorized_transaction_id,
+      amount,
+      transaction_type,
+      transaction_date,
+      details,
+      extracted_id,
+      offset_account_id,
+      attention_level,
+      current_account:offset_account_id ( account_id, account_name )
+    `)
+    .eq('user_id', userId)
+    .eq('review_status', 'PENDING')
+    .eq('transaction_type', transactionType)
+    .in('uncategorized_transaction_id', matchIds)
+    .limit(20);
+
+  return pendingTxns || [];
+}
+
+/**
  * recategorizeTransaction(req, res)
  * Updates a transaction with a new offset_account_id and marks as MANUAL.
  * Resets review_status to PENDING since the category changed.
@@ -237,6 +312,13 @@ async function recategorizeTransaction(req, res) {
             }));
           }
         }
+      }
+
+      // ── Priority 0.5: merchant-name matching ───────────────────────────────
+      // Same clean_merchant_name on the source uncategorized row — catches
+      // same-merchant rows the grouper split into different/singleton groups.
+      if (similarTransactions.length === 0) {
+        similarTransactions = await findSimilarByMerchant(userId, currentUncatId, transaction_type, null, details);
       }
 
       // If Priority 0 found results, skip Priority 1 and Priority 2
@@ -475,6 +557,15 @@ async function approveTransaction(req, res) {
             }));
           }
         }
+      }
+
+      // ── Priority 0.5: merchant-name matching ───────────────────────────────
+      // Same clean_merchant_name on the source uncategorized row — catches
+      // same-merchant rows the grouper split into different/singleton groups.
+      if (similarTransactions.length === 0) {
+        console.time(`${label}:4d-merchant-match`);
+        similarTransactions = await findSimilarByMerchant(userId, currentUncatId, transaction_type, null, details);
+        console.timeEnd(`${label}:4d-merchant-match`);
       }
 
       // If Priority 0 found results, skip Priority 1 and Priority 2
@@ -873,7 +964,7 @@ async function manualCategorizeTransaction(req, res) {
     // Fetch the uncategorized transaction row (include group_id for Priority 0 similar-txn matching)
     const { data: uncatData, error: uncatError } = await supabase
       .from('uncategorized_transactions')
-      .select('account_id, document_id, txn_date, details, debit, credit, group_id')
+      .select('account_id, document_id, txn_date, details, debit, credit, group_id, clean_merchant_name')
       .eq('uncategorized_transaction_id', uncategorized_transaction_id)
       .eq('user_id', userId)
       .single();
@@ -893,6 +984,7 @@ async function manualCategorizeTransaction(req, res) {
         document_id: uncatData.document_id,
         transaction_date: uncatData.txn_date,
         details: uncatData.details,
+        clean_merchant_name: uncatData.clean_merchant_name || null,
         amount: uncatData.debit || uncatData.credit,
         transaction_type: uncatData.debit > 0 ? 'EXPENSE' : 'INCOME',
         categorised_by: 'MANUAL',
@@ -1038,6 +1130,16 @@ async function manualCategorizeTransaction(req, res) {
             }));
           }
         }
+      }
+
+      // ── Priority 0.5: merchant-name matching ───────────────────────────────
+      // Same clean_merchant_name on the source uncategorized row — catches
+      // same-merchant rows the grouper split into different/singleton groups.
+      if (similarTransactions.length === 0) {
+        similarTransactions = await findSimilarByMerchant(
+          userId, uncategorized_transaction_id, newTxn.transaction_type,
+          uncatData.clean_merchant_name, uncatData.details
+        );
       }
 
       // If Priority 0 found results, skip Priority 1 and Priority 2
@@ -1699,4 +1801,5 @@ module.exports = {
   updateTransactionNote,
   manualAddTransaction,
   retryPipeline,
+  findSimilarByMerchant,
 };
