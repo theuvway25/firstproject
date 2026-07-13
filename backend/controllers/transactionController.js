@@ -1,6 +1,7 @@
 const supabase = require('../config/supabaseClient');
 const { upsertExactCache, upsertVectorCache, isGarbage } = require('../services/personalCacheService');
 const rulesEngineService = require('../services/rulesEngineService');
+const { sanitizeMerchantString } = require('../services/vectorMatchService');
 
 /**
  * Helper to build ledger entries for an approved transaction.
@@ -79,17 +80,19 @@ async function createLedgerEntries(transactionId, baseAccountId, offsetAccountId
 
 /**
  * Priority 0.5 — merchant-name similar-transaction matching.
- * Finds other PENDING transactions whose source uncategorized row carries the
- * same clean_merchant_name (extracted by the Python grouping job) OR the
- * identical raw details string. Catches same-merchant rows that the grouper
- * split across different group_ids or left as singleton groups. The
- * details-equality leg covers rows where the grouper produced inconsistent
- * merchant names for the same raw string.
+ * Finds other not-yet-approved rows for the same merchant. A candidate
+ * matches when any of these keys equals the current transaction's:
+ *   1. stored clean_merchant_name (when the grouping job populated it)
+ *   2. identical raw details string
+ *   3. sanitizeMerchantString(details) — deterministic merchant key derived
+ *      from raw details; this is the workhorse when the grouping job left
+ *      clean_merchant_name/group_id null (observed on newer uploads).
  *
- * Two-step lookup (uncat ids first, then .in() on transactions) — same
- * pattern as the group-sibling lookup, avoids the broken PostgREST
- * join-filter syntax. Separate queries per leg (instead of .or()) because
- * raw details strings can contain characters that break .or() value quoting.
+ * Matching happens in JS over a bounded pool of the user's recent
+ * uncategorized rows (sanitized keys can't be compared in SQL). Results come
+ * in two buckets, mirroring the Priority 0 group logic:
+ *   a. matches that already exist as PENDING transactions
+ *   b. pre-pipeline matches (no transactions row yet) → is_pre_pipeline: true
  *
  * merchantName/details are optional; whatever the caller hasn't already
  * fetched is looked up from the current uncategorized row.
@@ -109,26 +112,32 @@ async function findSimilarByMerchant(userId, currentUncatId, transactionType, me
   }
   if (!merchantName && !details) return [];
 
-  const candidateQuery = (column, value) => supabase
+  const currentName = (merchantName || '').trim().toUpperCase();
+  const sanitized = sanitizeMerchantString(details || '').toUpperCase();
+  // Very short keys ("A", "DR") would false-positive across unrelated rows
+  const currentKey = sanitized.length >= 3 ? sanitized : '';
+
+  const { data: pool } = await supabase
     .from('uncategorized_transactions')
-    .select('uncategorized_transaction_id')
+    .select('uncategorized_transaction_id, details, clean_merchant_name, txn_date, debit, credit, account_id')
     .eq('user_id', userId)
-    .eq(column, value)
     .neq('uncategorized_transaction_id', currentUncatId)
     .neq('grouping_status', 'skipped')
-    .limit(50);
+    .order('uncategorized_transaction_id', { ascending: false })
+    .limit(500);
 
-  const [merchantMatches, detailsMatches] = await Promise.all([
-    merchantName ? candidateQuery('clean_merchant_name', merchantName) : { data: [] },
-    details ? candidateQuery('details', details) : { data: [] }
-  ]);
+  const matches = (pool || []).filter(r => {
+    const rName = (r.clean_merchant_name || '').trim().toUpperCase();
+    if (currentName && rName && rName === currentName) return true;
+    if (details && r.details === details) return true;
+    if (!currentKey) return false;
+    return sanitizeMerchantString(r.details || '').toUpperCase() === currentKey;
+  });
+  if (matches.length === 0) return [];
 
-  const matchIds = [...new Set(
-    [...(merchantMatches.data || []), ...(detailsMatches.data || [])]
-      .map(r => r.uncategorized_transaction_id)
-  )];
-  if (matchIds.length === 0) return [];
+  const matchIds = matches.map(r => r.uncategorized_transaction_id);
 
+  // Bucket a: matches already living in transactions as PENDING
   const { data: pendingTxns } = await supabase
     .from('transactions')
     .select(`
@@ -149,7 +158,33 @@ async function findSimilarByMerchant(userId, currentUncatId, transactionType, me
     .in('uncategorized_transaction_id', matchIds)
     .limit(20);
 
-  return pendingTxns || [];
+  if (pendingTxns && pendingTxns.length > 0) return pendingTxns;
+
+  // Bucket b: pre-pipeline matches — no transactions row yet. Same shape the
+  // Priority 0 group logic emits; the popup batch-approves them via
+  // manual-categorize.
+  const { data: existingRows } = await supabase
+    .from('transactions')
+    .select('uncategorized_transaction_id')
+    .in('uncategorized_transaction_id', matchIds);
+  const alreadyInTxns = new Set((existingRows || []).map(r => r.uncategorized_transaction_id));
+
+  return matches
+    .filter(m => !alreadyInTxns.has(m.uncategorized_transaction_id))
+    .filter(m => ((m.debit ? 'EXPENSE' : 'INCOME') === transactionType))
+    .slice(0, 20)
+    .map(m => ({
+      transaction_id: null,
+      amount: m.debit || m.credit,
+      transaction_type: m.debit ? 'EXPENSE' : 'INCOME',
+      transaction_date: m.txn_date,
+      details: m.details,
+      offset_account_id: null,
+      attention_level: 'HIGH',
+      current_account: null,
+      uncategorized_transaction_id: m.uncategorized_transaction_id,
+      is_pre_pipeline: true
+    }));
 }
 
 /**

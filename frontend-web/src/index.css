@@ -28,3 +28,28 @@ body.light-mode {
   height: 100%;
   width: 100%;
 }
+
+/* Canonical loading spinner. Page stylesheets may override size/color with a
+   scoped rule (e.g. .welcome-container .spinner) but must not redefine .spinner
+   globally — duplicate global definitions cascade by bundle order, not by page. */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--glass-border, rgba(127, 175, 138, 0.3));
+  border-top-color: var(--accent-color, #7FAF8A);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+button .spinner {
+  width: 16px;
+  height: 16px;
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+}

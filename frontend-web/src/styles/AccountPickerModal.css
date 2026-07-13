@@ -186,7 +186,7 @@
   background: var(--text-secondary);
 }
 
-.spinner {
+.account-picker-modal .spinner {
   display: inline-block;
   width: 20px;
   height: 20px;
@@ -194,10 +194,4 @@
   border-top-color: var(--accent-color);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }

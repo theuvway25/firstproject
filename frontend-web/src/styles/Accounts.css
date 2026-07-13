@@ -692,7 +692,7 @@ body.light-mode .acct-toggle-switch input:checked + .acct-toggle-slider::before 
   cursor: not-allowed;
 }
 
-.spinner {
+.add-account-modal .spinner {
   width: 14px;
   height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.2);
