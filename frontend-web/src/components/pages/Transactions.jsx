@@ -1771,8 +1771,16 @@ const Transactions = () => {
           approveResult = await approveReviewTxn(txnRow.transaction_id);
         }
 
-        // Similar-transaction popup is disabled in manual review — group_id
-        // session memory handles bulk pre-filling within the review queue.
+        // Show the similar-transactions popup on top of the review panel.
+        // Confirming from the popup also removes those txns from the review
+        // queue (handleSimilarBulkConfirm / handleSimilarIndividualApprove
+        // already sync reviewQueue); dismissing falls back to the group_id
+        // session-memory pre-fill within the queue.
+        if (approveResult?.similarTransactions?.length > 0) {
+          setSimilarTxns(approveResult.similarTransactions);
+          setSimilarSuggestedAccount(approveResult.suggestedAccount);
+          setSimilarAccountOverrides({});
+        }
       } catch (err) {
         showToast(err.message || 'Background approval failed', 'error');
       }
